@@ -1,0 +1,8 @@
+import AppKit
+
+let app = NSApplication.shared
+let delegate = AppDelegate()
+app.delegate = delegate
+// Menu bar app: no Dock icon, even when run outside the bundle (LSUIElement covers the bundle).
+app.setActivationPolicy(.accessory)
+app.run()

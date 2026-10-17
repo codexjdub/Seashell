@@ -1,0 +1,9 @@
+# Local-only (see AGENTS.md)
+AGENTS.md
+TODO.md
+
+# Build output
+.build/
+build/
+
+.DS_Store
