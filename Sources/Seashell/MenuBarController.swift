@@ -7,11 +7,13 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let store: StashStore
     private let dropper: StashDropper
+    private let panel: PanelController
     private let menu = NSMenu()
 
-    init(store: StashStore, dropper: StashDropper) {
+    init(store: StashStore, dropper: StashDropper, panel: PanelController) {
         self.store = store
         self.dropper = dropper
+        self.panel = panel
         super.init()
         statusItem.button?.image = NSImage(systemSymbolName: "tray.full", accessibilityDescription: "Seashell")
         menu.delegate = self
@@ -26,7 +28,17 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         }
     }
 
+    /// Whether `point` (screen coordinates) is on the menu bar icon.
+    func isOnIcon(_ point: NSPoint) -> Bool {
+        guard let frame = statusItem.button?.window?.frame else { return false }
+        return point.x >= frame.minX && point.x <= frame.maxX && point.y >= frame.minY && point.y <= frame.maxY
+    }
+
     // MARK: Menu
+
+    func menuWillOpen(_ menu: NSMenu) {
+        Log.info("Menu opened (panel \(panel.stateDescription))")
+    }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
@@ -38,10 +50,15 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         show.target = self
         menu.addItem(show)
         menu.addItem(.separator())
-        // No action yet, so the menu shows it disabled. The panel arrives in Milestone 3.
-        menu.addItem(NSMenuItem(title: "Open Seashell", action: nil, keyEquivalent: ""))
+        let toggle = NSMenuItem(title: panel.isShowing ? "Close Seashell" : "Open Seashell", action: #selector(togglePanel), keyEquivalent: "")
+        toggle.target = self
+        menu.addItem(toggle)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Seashell", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    }
+
+    @objc private func togglePanel() {
+        panel.toggle(reason: "menu")
     }
 
     @objc private func showStash() {

@@ -6,7 +6,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: StashStore?
     private var menuBar: MenuBarController?
     private var floatingShelf: FloatingShelf?
+    private var panel: PanelController?
     private let dragWatcher = DragWatcher()
+    private let edgeScrollWatcher = EdgeScrollWatcher()
     private var isSecondCopy = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -35,11 +37,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.store = store
 
         let dropper = StashDropper(mover: mover)
-        menuBar = MenuBarController(store: store, dropper: dropper)
+        let panel = PanelController(store: store, dropper: dropper)
+        self.panel = panel
+        menuBar = MenuBarController(store: store, dropper: dropper, panel: panel)
+        panel.ignoresClick = { [weak self] point in self?.menuBar?.isOnIcon(point) ?? false }
         let floatingShelf = FloatingShelf(store: store, dropper: dropper)
         self.floatingShelf = floatingShelf
+
         dragWatcher.onShake = { floatingShelf.show(at: $0) }
+        dragWatcher.onHoldAtTopEdge = { panel.open(on: NSScreen.containing($0), reason: "drag held at top edge") }
         dragWatcher.start()
+        edgeScrollWatcher.onGesture = { gesture, screen in
+            switch gesture {
+            case .pullDown: panel.open(on: screen, reason: "pull down at top edge")
+            case .pushUp: panel.close(reason: "push up at top edge")
+            }
+        }
+        edgeScrollWatcher.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -1,17 +1,25 @@
 import AppKit
 import SeashellCore
 
-/// Watches mouse drags in every app and calls `onShake` once per drag when the
-/// pointer is shaken while something is actually being dragged. Dragging a
-/// window or selecting text doesn't count: those leave the drag pasteboard alone.
+/// Watches mouse drags in every app, while something is actually being dragged
+/// (dragging a window or selecting text leaves the drag pasteboard alone), and
+/// reports, at most once per drag each:
+/// - a shake of the pointer (`onShake`), and
+/// - the pointer held at the top edge, away from the corners, for half a second
+///   (`onHoldAtTopEdge`).
 @MainActor
 final class DragWatcher {
     var onShake: ((NSPoint) -> Void)?
+    var onHoldAtTopEdge: ((NSPoint) -> Void)?
+
+    private static let holdDelay: Duration = .milliseconds(500)
 
     private var detector = ShakeDetector()
     private let dragPasteboard = NSPasteboard(name: .drag)
     private var changeCountAtPress = 0
     private var shookThisDrag = false
+    private var heldThisDrag = false
+    private var holdTask: Task<Void, Never>?
     private var monitors: [Any] = []
 
     func start() {
@@ -36,16 +44,48 @@ final class DragWatcher {
         case .leftMouseDown:
             changeCountAtPress = dragPasteboard.changeCount
             shookThisDrag = false
+            heldThisDrag = false
+            cancelHold()
             detector.reset()
         case .leftMouseDragged:
-            guard !shookThisDrag, dragPasteboard.changeCount != changeCountAtPress else { return }
+            guard dragPasteboard.changeCount != changeCountAtPress else { return }
             let point = NSEvent.mouseLocation
-            if detector.add(x: point.x, at: event.timestamp) {
+            watchForHold(at: point)
+            if !shookThisDrag, detector.add(x: point.x, at: event.timestamp) {
                 shookThisDrag = true
                 onShake?(point)
             }
         default:
             break
         }
+    }
+
+    /// The pointer may sit still at the edge, sending no events, so a timer
+    /// decides; moving out of the zone cancels it.
+    private func watchForHold(at point: NSPoint) {
+        guard !heldThisDrag, Self.isInSpringLoadZone(point) else {
+            cancelHold()
+            return
+        }
+        guard holdTask == nil else { return }
+        holdTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.holdDelay)
+            guard let self, !Task.isCancelled else { return }
+            self.holdTask = nil
+            let now = NSEvent.mouseLocation
+            guard NSEvent.pressedMouseButtons & 1 != 0, Self.isInSpringLoadZone(now) else { return }
+            self.heldThisDrag = true
+            self.onHoldAtTopEdge?(now)
+        }
+    }
+
+    private func cancelHold() {
+        holdTask?.cancel()
+        holdTask = nil
+    }
+
+    private static func isInSpringLoadZone(_ point: NSPoint) -> Bool {
+        guard let screen = NSScreen.containing(point) else { return false }
+        return PanelGeometry.isInSpringLoadZone(point, screenFrame: screen.frame)
     }
 }

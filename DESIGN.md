@@ -14,9 +14,12 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-- Opens by scrolling at the top screen edge or from the menu bar item, on the display the pointer is on.
+- Centered below the menu bar, up to 1000 × 320 pt, on the display the pointer is on. Slides out from under the menu bar.
+- Opens by pulling down at the top screen edge (two fingers down ~40 pt, or 2 wheel clicks toward you, whatever the natural-scrolling setting), from the menu bar item, or by holding a drag at the top edge for half a second (not within 100 pt of the corners, where hot corners live).
+- Closes on a click outside it, Esc, pushing up at the top edge, or the menu bar item. A press outside that turns into dragging a file or text keeps it open, so you can drag things into it.
+- Takes keys (Esc, ⌘⌫, Space) without taking focus from the app you're in.
+- Until Clipboard and Notes exist, Stash fills the panel.
 - Dropping onto the menu bar icon stashes into `Main`.
-- Closes on a click outside it or Esc.
 
 Shaking the cursor during a drag pops a **floating shelf** near the cursor with three drop zones: Stash, Copy, Cut (Stash only until the Clipboard exists). Its Stash zone saves into the default `Main` shelf. It hides about a second after the mouse is released, whether or not you dropped on it, and never deletes anything.
 
@@ -88,7 +91,7 @@ If two Macs edit the same note at once, iCloud keeps both as separate files (`Gr
 
 ## Architecture
 
-Swift Package Manager, no Xcode required. AppKit for windows, events and drag sessions; SwiftUI for views inside them. Tests use Swift Testing (XCTest is not in the Command Line Tools).
+Swift Package Manager, no Xcode required. AppKit for windows, events, drag sessions and the item grids (`NSCollectionView`: multi-select, drag operations and context menus need AppKit's control); SwiftUI where that control isn't needed, e.g. Notes. Tests use Swift Testing (XCTest is not in the Command Line Tools).
 
 ```
 Package.swift
