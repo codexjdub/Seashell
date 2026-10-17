@@ -6,7 +6,10 @@ import os
 public enum Log {
     public static let fileURL = URL.libraryDirectory.appending(path: "Logs/Seashell/Seashell.log")
 
-    private static let logger = Logger(subsystem: "io.github.codexjdub.seashell", category: "app")
+    private static let subsystem = "io.github.codexjdub.seashell"
+    /// Only the app itself writes the file, so test runs don't fill it with noise.
+    private static let writesFile = Bundle.main.bundleIdentifier == subsystem
+    private static let logger = Logger(subsystem: subsystem, category: "app")
     private static let queue = DispatchQueue(label: "io.github.codexjdub.seashell.log")
     private static let timestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: true, timeZone: .current)
 
@@ -21,6 +24,7 @@ public enum Log {
     }
 
     private static func appendToFile(_ message: String) {
+        guard writesFile else { return }
         let line = Data("[\(Date.now.formatted(timestamp))] \(message)\n".utf8)
         queue.async {
             if let handle = try? FileHandle(forWritingTo: fileURL) {

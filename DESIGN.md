@@ -15,9 +15,10 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 ```
 
 - Opens by scrolling at the top screen edge or from the menu bar item, on the display the pointer is on.
+- Dropping onto the menu bar icon stashes into `Main`.
 - Closes on a click outside it or Esc.
 
-Shaking the cursor during a drag pops a **floating shelf** near the cursor with three drop zones: Stash, Copy, Cut. Its Stash zone saves into the default `Main` shelf; closing the floating shelf only hides it and never deletes anything.
+Shaking the cursor during a drag pops a **floating shelf** near the cursor with three drop zones: Stash, Copy, Cut (Stash only until the Clipboard exists). Its Stash zone saves into the default `Main` shelf. It hides about a second after the mouse is released, whether or not you dropped on it, and never deletes anything.
 
 ## Behaviour
 
@@ -38,7 +39,8 @@ Rules:
 - No modifier keys change behaviour. The drop zone decides.
 - To take a file out of Stash for good: drag it out (a copy lands), then right-click → Delete.
 - Any file or folder over 1 GB going into Stash asks first — everything in Stash uploads to iCloud and counts against its storage.
-- Moving into Stash from another volume is copy → verify → delete.
+- Moving into Stash from another volume is copy → verify → delete the original, like Finder.
+- Stashed text is named by its first few words (`Recently, I lived for a few.txt`, at most 6 words and 40 characters), or `Snippet 2026-10-17 0942.txt` when there are none.
 - Name clash in Stash: the newcomer becomes `report 2.pdf`, like Finder.
 - Folders are treated like files.
 - Several items dropped at once become separate items. Select several in a shelf to drag them out together.
@@ -64,8 +66,8 @@ Rules:
 ├── Stash/
 │   ├── Main/                         ← default shelf
 │   │   ├── report.pdf
-│   │   ├── Snippet 2026-10-17 0942.txt
-│   │   └── .seashell.json            ← order, pinned flag, where each item came from (Put Back)
+│   │   ├── Recently, I lived for a few.txt ← stashed text, named by its first words
+│   │   └── .seashell.json            ← item order, where each item came from (Put Back)
 │   └── Work/
 └── Notes/
     └── Groceries.md                  ← one Markdown file per note
@@ -127,6 +129,8 @@ This keeps Seashell out of the delete business for Cut. Proven on the same volum
 ### Drag in
 
 Finder does **not** delete the original when a drop target answers `move`. Seashell moves files into Stash itself (`FileMover`).
+
+Answer `move` only for file drops. For anything else answer `copy`: a text source such as TextEdit deletes the dragged text when the destination answers `move`.
 
 ### Shake
 

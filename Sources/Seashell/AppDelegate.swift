@@ -3,7 +3,10 @@ import SeashellCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var statusItem: NSStatusItem?
+    private var store: StashStore?
+    private var menuBar: MenuBarController?
+    private var floatingShelf: FloatingShelf?
+    private let dragWatcher = DragWatcher()
     private var isSecondCopy = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -14,13 +17,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         Log.info("Seashell \(version) launched from \(Bundle.main.bundlePath)")
-        prepareFolders()
-        setUpMenuBar()
+
+        let folders = SeashellFolders.standard
+        prepare(folders)
+        let mover = FileMover()
+        let store = StashStore(library: StashLibrary(stash: folders.stash, mover: mover))
+        // Finder and iCloud touch hidden files often; log only real changes in what's stashed.
+        var lastSummary = Self.summary(of: store)
+        store.onChange = { [weak store] in
+            guard let store else { return }
+            let summary = Self.summary(of: store)
+            guard summary != lastSummary else { return }
+            lastSummary = summary
+            Log.info("Stash changed: \(summary)")
+        }
+        store.startWatching()
+        self.store = store
+
+        let dropper = StashDropper(mover: mover)
+        menuBar = MenuBarController(store: store, dropper: dropper)
+        let floatingShelf = FloatingShelf(store: store, dropper: dropper)
+        self.floatingShelf = floatingShelf
+        dragWatcher.onShake = { floatingShelf.show(at: $0) }
+        dragWatcher.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         guard !isSecondCopy else { return }
         Log.info("Seashell quit")
+    }
+
+    private static func summary(of store: StashStore) -> String {
+        store.shelves.map { "\($0.name) \(store.items(in: $0).count)" }.joined(separator: ", ")
     }
 
     /// Two copies would both react to every shake and edge scroll, so a second launch bows out.
@@ -33,26 +61,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    private func prepareFolders() {
+    private func prepare(_ folders: SeashellFolders) {
         do {
-            for folder in try SeashellFolders.standard.createMissing() {
+            for folder in try folders.createMissing() {
                 Log.info("Created \(folder.path(percentEncoded: false))")
             }
         } catch {
             Log.error("Could not create Seashell folders: \(error.localizedDescription)")
         }
-    }
-
-    private func setUpMenuBar() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "tray.full", accessibilityDescription: "Seashell")
-
-        let menu = NSMenu()
-        // No action yet, so the menu shows it disabled. The panel arrives in Milestone 3.
-        menu.addItem(NSMenuItem(title: "Open Seashell", action: nil, keyEquivalent: ""))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Seashell", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-        item.menu = menu
-        statusItem = item
     }
 }
