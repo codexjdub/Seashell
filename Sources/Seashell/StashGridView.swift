@@ -10,7 +10,13 @@ final class StashGridView: NSCollectionView {
     var onOpen: (() -> Void)?
     var onDelete: (() -> Void)?
     var onTogglePreview: (() -> Void)?
+    var onCopy: (() -> Void)?
+    var onPaste: (() -> Void)?
     var contextMenu: (() -> NSMenu?)?
+
+    // ⌘C and ⌘V arrive here as the standard copy: and paste: actions.
+    @objc func copy(_ sender: Any?) { onCopy?() }
+    @objc func paste(_ sender: Any?) { onPaste?() }
 
     override var acceptsFirstResponder: Bool { true }
 

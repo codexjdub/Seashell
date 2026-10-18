@@ -302,11 +302,26 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
         add("Quick Look") { [weak self] in self?.togglePreview() }
         add("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(selection.map(\.url)) }
         menu.addItem(.separator())
+        add("Copy") { ItemActions.copy(selection) }
+        add("Paste", enabled: ItemActions.canPaste) { [weak self] in self?.paste() }
+        add("Rename…", enabled: selection.count == 1) { [weak self] in
+            guard let self, let item = selection.first else { return }
+            ItemActions.rename(item, with: self.mover)
+            self.store.reload()
+        }
+        menu.addItem(ItemActions.shareMenuItem(for: selection))
+        menu.addItem(.separator())
         add("Put Back", enabled: !selection.isEmpty && selection.allSatisfy { $0.origin != nil }) { [weak self] in
             self?.perform("put back", selection.filter { $0.origin != nil }.map(\.url)) { _ = try $0.putBack($1) }
         }
         add("Move to Trash") { [weak self] in self?.deleteSelection() }
         return menu
+    }
+
+    private func paste() {
+        guard let shelf else { return }
+        note("paste")
+        if !dropper.paste(into: shelf.url) { NSSound.beep() }
     }
 
     private func deleteSelection() {
@@ -376,6 +391,8 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
         grid.onOpen = { [weak self] in self?.openSelection() }
         grid.onDelete = { [weak self] in self?.deleteSelection() }
         grid.onTogglePreview = { [weak self] in self?.togglePreview() }
+        grid.onCopy = { [weak self] in self.map { ItemActions.copy($0.selectedItems) } }
+        grid.onPaste = { [weak self] in self?.paste() }
         grid.contextMenu = { [weak self] in self?.itemMenu() }
 
         let scroll = NSScrollView()
@@ -448,6 +465,19 @@ final class TearOffWindow: NSPanel {
 
     override func cancelOperation(_ sender: Any?) {
         onEscape?()
+    }
+
+    /// No menu bar of its own: ⌘C and ⌘V go to the grid by hand.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let action: Selector? = switch (modifiers, event.charactersIgnoringModifiers?.lowercased()) {
+        case (.command, "c"): #selector(NSText.copy(_:))
+        case (.command, "v"): #selector(NSText.paste(_:))
+        case (.command, "a"): #selector(NSText.selectAll(_:))
+        default: nil
+        }
+        if let action, NSApp.sendAction(action, to: nil, from: self) { return true }
+        return super.performKeyEquivalent(with: event)
     }
 }
 

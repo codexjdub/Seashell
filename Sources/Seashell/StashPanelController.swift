@@ -76,6 +76,8 @@ final class StashPanelController: NSViewController {
         grid.onDelete = { [weak self] in self?.deleteSelection() }
         grid.contextMenu = { [weak self] in self?.itemMenu() }
         grid.onTogglePreview = { [weak self] in self?.togglePreview() }
+        grid.onCopy = { [weak self] in self.map { ItemActions.copy($0.selectedItems) } }
+        grid.onPaste = { [weak self] in self?.pasteIntoShelf() }
 
         let scroll = NSScrollView()
         scroll.documentView = grid
@@ -330,6 +332,11 @@ final class StashPanelController: NSViewController {
         add("Quick Look", #selector(quickLookSelection))
         add("Show in Finder", #selector(showSelectionInFinder))
         menu.addItem(.separator())
+        add("Copy", #selector(copySelection))
+        add("Paste", #selector(pasteFromMenu), enabled: ItemActions.canPaste)
+        add("Rename…", #selector(renameSelection), enabled: selection.count == 1)
+        menu.addItem(ItemActions.shareMenuItem(for: selection))
+        menu.addItem(.separator())
         add("Put Back", #selector(putBackSelection), enabled: !selection.isEmpty && selection.allSatisfy { $0.origin != nil })
         add("Move to Trash", #selector(deleteSelection))
         return menu
@@ -347,6 +354,28 @@ final class StashPanelController: NSViewController {
     @objc private func showSelectionInFinder() {
         note("Show in Finder \(count(selectedItems.count))")
         NSWorkspace.shared.activateFileViewerSelecting(selectedItems.map(\.url))
+    }
+
+    @objc private func copySelection() {
+        note("Copy \(count(selectedItems.count))")
+        ItemActions.copy(selectedItems)
+    }
+
+    @objc private func pasteFromMenu() {
+        pasteIntoShelf()
+    }
+
+    private func pasteIntoShelf() {
+        guard let shelf = currentShelf else { return }
+        note("Paste into “\(shelf.name)”")
+        if !dropper.paste(into: shelf.url) { NSSound.beep() }
+    }
+
+    @objc private func renameSelection() {
+        guard let item = selectedItems.first else { return }
+        note("Rename… \(item.name)")
+        ItemActions.rename(item, with: mover)
+        store.reload()
     }
 
     @objc private func putBackSelection() {

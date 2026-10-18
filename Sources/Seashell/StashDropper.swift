@@ -35,11 +35,21 @@ final class StashDropper {
 
     /// Stashes everything in the drop into `shelf`. Returns false if nothing was usable.
     func accept(_ info: any NSDraggingInfo, into shelf: URL) -> Bool {
-        let pasteboard = info.draggingPasteboard
-        // One object per dragged item, in order of preference.
+        accept(info.draggingPasteboard, into: shelf, copyingFiles: false)
+    }
+
+    /// ⌘V into a shelf: like a drop, except files are copied in and the
+    /// originals stay, as pasting does everywhere.
+    func paste(into shelf: URL) -> Bool {
+        Log.info("Pasting into \(shelf.lastPathComponent)")
+        return accept(NSPasteboard.general, into: shelf, copyingFiles: true)
+    }
+
+    private func accept(_ pasteboard: NSPasteboard, into shelf: URL, copyingFiles: Bool) -> Bool {
+        // One object per item, in order of preference.
         let classes: [AnyClass] = [NSFilePromiseReceiver.self, NSURL.self, NSImage.self, NSString.self]
         guard let objects = pasteboard.readObjects(forClasses: classes, options: nil), !objects.isEmpty else {
-            Log.info("Drop had nothing Seashell can stash: \(pasteboard.types?.map(\.rawValue) ?? [])")
+            Log.info("Nothing Seashell can stash: \(pasteboard.types?.map(\.rawValue) ?? [])")
             return false
         }
 
@@ -65,14 +75,14 @@ final class StashDropper {
             }
         }
         if !files.isEmpty {
-            Task { await stash(files, into: shelf, rememberOrigin: true) }
+            Task { await stash(files, into: shelf, rememberOrigin: true, copying: copyingFiles) }
         }
         return true
     }
 
     /// Moves files in one by one, off the main thread, asking first about ones
     /// over the limit in Settings.
-    private func stash(_ files: [URL], into shelf: URL, rememberOrigin: Bool) async {
+    private func stash(_ files: [URL], into shelf: URL, rememberOrigin: Bool, copying: Bool = false) async {
         let mover = self.mover
         for file in files {
             if let limit = AppSettings.shared.largeFileLimit.bytes {
@@ -84,7 +94,9 @@ final class StashDropper {
                 }
             }
             do {
-                _ = try await Task.detached { try mover.stash(file, into: shelf, rememberOrigin: rememberOrigin) }.value
+                _ = try await Task.detached {
+                    copying ? try mover.stashCopy(file, into: shelf) : try mover.stash(file, into: shelf, rememberOrigin: rememberOrigin)
+                }.value
             } catch {
                 report("Couldn’t stash “\(file.lastPathComponent)”", error)
             }
