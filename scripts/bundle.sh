@@ -35,12 +35,20 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$PRODUCT"
 
+# The app icon, if the package has one (scripts/make-icon.sh builds it).
+ICON_KEY=""
+if [[ -f "$PKG/Resources/AppIcon.icns" ]]; then
+    cp "$PKG/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+    ICON_KEY="<key>CFBundleIconFile</key><string>AppIcon</string>"
+fi
+
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key><string>$PRODUCT</string>
+    $ICON_KEY
     <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
     <key>CFBundleName</key><string>$PRODUCT</string>
     <key>CFBundlePackageType</key><string>APPL</string>

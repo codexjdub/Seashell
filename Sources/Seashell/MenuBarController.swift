@@ -17,7 +17,7 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         self.panel = panel
         self.settings = settings
         super.init()
-        statusItem.button?.image = NSImage(systemSymbolName: "tray.full", accessibilityDescription: "Seashell")
+        statusItem.button?.image = MenuBarIcon.image
         menu.delegate = self
         statusItem.menu = menu
 

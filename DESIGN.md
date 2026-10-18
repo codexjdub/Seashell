@@ -138,11 +138,19 @@ Sources/
     SettingsWindow      theme, text size, launch at login (SMAppService), large-file limit, shake sensitivity, pull down
     Views/              SwiftUI: StashView, ClipboardView, NotesView
 Tests/SeashellCoreTests
+Resources/AppIcon.svg   the app icon's source drawing
+Resources/AppIcon.icns  built from it by scripts/make-icon.sh (svg2png.swift + iconutil)
 scripts/bundle.sh       swift build → Seashell.app (Info.plist, icon) → codesign "codexjdub"
-scripts/run.sh          quit running copy → bundle → install to ~/Applications → open
+scripts/run.sh          quit running copy → bundle → install to /Applications → open
 ```
 
-Build output lives in `~/Library/Caches/Seashell` (outside iCloud: iCloud tags bundles in Documents with metadata that breaks codesign). The installed app lives in `~/Applications/Seashell.app`, a stable path for launch at login that macOS won't purge and iCloud won't sync.
+### App icon
+
+A pearl-white scallop on pearl white, with Zephyr's breath from *The Birth of Venus*: three wind curls at the upper left, orange on the lowest strand to light brown on the highest. The shell has a lobed rim, light-catching ribs and small ears at the hinge, so it reads as a scallop, not a fan. It follows the Big Sur icon grid (an 824 pt rounded square on a 1024 canvas) as a classic `.icns`: Apple's layered format needs Xcode. To change it, edit `Resources/AppIcon.svg` and run `scripts/make-icon.sh`; AppKit renders the SVG (Quick Look's renderer would fill the corners white).
+
+The menu bar icon matches it: the scallop in lines (seven lobes, six ribs, ears) with the three wind strands across its left edge, a small gap cut around them so they read in front. It's an 18 pt template image drawn in code (`MenuBarIcon.swift`), so macOS tints it for light and dark menu bars and it stays sharp at 1x and 2x. AppKit's SVG renderer blurs masked gaps, which is why it isn't an SVG.
+
+Build output lives in `~/Library/Caches/Seashell` (outside iCloud: iCloud tags bundles in Documents with metadata that breaks codesign). The installed app lives in `/Applications/Seashell.app`, where you'd look for it, a stable path for launch at login that iCloud won't sync (an admin account writes there without a password).
 
 ### Drag out
 

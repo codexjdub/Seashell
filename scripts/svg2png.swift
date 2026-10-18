@@ -1,0 +1,22 @@
+// Renders an SVG to a square PNG with a transparent background, using AppKit's
+// own SVG support. Quick Look's renderer fills the background white, which
+// would show as white corners around the app icon.
+//
+// Usage: svg2png <input.svg> <output.png> <size>
+import AppKit
+
+let args = CommandLine.arguments
+guard args.count == 4, let size = Int(args[3]),
+      let image = NSImage(contentsOf: URL(fileURLWithPath: args[1])),
+      let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,
+                                 samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                 bytesPerRow: 0, bitsPerPixel: 0)
+else {
+    FileHandle.standardError.write(Data("usage: svg2png <input.svg> <output.png> <size>\n".utf8))
+    exit(64)
+}
+NSGraphicsContext.saveGraphicsState()
+NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+image.draw(in: NSRect(x: 0, y: 0, width: size, height: size))
+NSGraphicsContext.restoreGraphicsState()
+try rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: args[2]))
