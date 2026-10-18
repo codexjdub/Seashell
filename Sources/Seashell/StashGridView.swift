@@ -60,7 +60,7 @@ final class StashItemCell: NSCollectionViewItem {
     // selectable label would start a text selection instead of dragging the item.
     private let name = PassThroughLabel(wrappingLabelWithString: "")
     // Text
-    private let noteCard = CardView(color: .systemYellow)
+    private let noteCard = CardView(color: NoteTint.color, fill: NoteTint.fill, border: NoteTint.border)
     private let noteText = PassThroughLabel(wrappingLabelWithString: "")
     // Links
     private let linkCard = CardView(color: .systemBlue)
@@ -238,13 +238,28 @@ final class StashItemCell: NSCollectionViewItem {
     }
 }
 
+/// The faint yellow notes are drawn in, alike on Stash's note cards and the
+/// Notes card. Opacities of `color`, washed over the card underneath.
+@MainActor
+enum NoteTint {
+    static let color = NSColor.systemYellow
+    static let fill: CGFloat = 0.06
+    static let border: CGFloat = 0.22
+    /// The selected note in the Notes list.
+    static let selection: CGFloat = 0.16
+}
+
 /// A rounded, tinted card. Drawn rather than layer-styled, so it can be
 /// captured for a drag image and follows light and dark mode.
 final class CardView: NSView {
     private let color: NSColor
+    private let fill: CGFloat
+    private let border: CGFloat
 
-    init(color: NSColor) {
+    init(color: NSColor, fill: CGFloat = 0.18, border: CGFloat = 0.45) {
         self.color = color
+        self.fill = fill
+        self.border = border
         super.init(frame: .zero)
     }
 
@@ -255,9 +270,9 @@ final class CardView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
-        color.withAlphaComponent(0.18).setFill()
+        color.withAlphaComponent(fill).setFill()
         path.fill()
-        color.withAlphaComponent(0.45).setStroke()
+        color.withAlphaComponent(border).setStroke()
         path.lineWidth = 1
         path.stroke()
     }

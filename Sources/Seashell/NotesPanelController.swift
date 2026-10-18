@@ -399,6 +399,10 @@ extension NotesPanelController: NSTableViewDataSource, NSTableViewDelegate {
         return cell
     }
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        NoteSelectionRowView()
+    }
+
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !isSelectingProgrammatically, rows.indices.contains(table.selectedRow),
               case .note(let selected) = rows[table.selectedRow] else { return }
@@ -488,6 +492,20 @@ final class NoteRowView: NSTableCellView {
         date.stringValue = detail
         toolTip = text
     }
+}
+
+/// The selected note is a stronger yellow than the Notes card, whether or not
+/// the list has focus.
+final class NoteSelectionRowView: NSTableRowView {
+    override func drawSelection(in dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 1), xRadius: 5, yRadius: 5)
+        NoteTint.color.withAlphaComponent(NoteTint.selection).setFill()
+        path.fill()
+    }
+
+    /// Keeps the title in the normal text color; the default turns it white,
+    /// which is unreadable on pale yellow in light mode.
+    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
 }
 
 /// The notes list: ⌘⌫ deletes, and right-clicking a row selects it first.

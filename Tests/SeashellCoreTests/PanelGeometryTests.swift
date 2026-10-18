@@ -33,6 +33,46 @@ struct PanelGeometryTests {
         #expect(PanelGeometry.hiddenFrame(for: frame) == CGRect(x: 100, y: 820, width: 1000, height: 320))
     }
 
+    @Test func remembersDraggedSizeScaledByText() {
+        let visible = CGRect(x: 47, y: 0, width: 3393, height: 1410)
+        let frame = PanelGeometry.frame(in: visible, scale: 1.5, size: CGSize(width: 1200, height: 400))
+        #expect(frame.size == CGSize(width: 1800, height: 600))
+        #expect(frame.midX == visible.midX)
+        #expect(frame.maxY == visible.maxY - 8)
+    }
+
+    @Test func draggedSizeNeverBelowMinimum() {
+        let visible = CGRect(x: 0, y: 0, width: 3000, height: 1400)
+        let frame = PanelGeometry.frame(in: visible, size: CGSize(width: 100, height: 50))
+        #expect(frame.size == PanelGeometry.minimumSize)
+    }
+
+    @Test func resizingKeepsTopAndCenter() {
+        let visible = CGRect(x: 0, y: 0, width: 1512, height: 949)
+        let start = PanelGeometry.frame(in: visible)
+        let bigger = PanelGeometry.resized(start, by: CGSize(width: 100, height: 60), scale: 1, in: visible)
+        #expect(bigger.width == start.width + 100)
+        #expect(bigger.height == start.height + 60)
+        #expect(bigger.maxY == start.maxY)
+        #expect(bigger.midX == visible.midX)
+    }
+
+    @Test func resizingStopsAtMinimumAndScreen() {
+        let visible = CGRect(x: 0, y: 0, width: 1512, height: 949)
+        let start = PanelGeometry.frame(in: visible)
+        let tiny = PanelGeometry.resized(start, by: CGSize(width: -5000, height: -5000), scale: 1, in: visible)
+        #expect(tiny.size == PanelGeometry.minimumSize)
+        let huge = PanelGeometry.resized(start, by: CGSize(width: 5000, height: 5000), scale: 1, in: visible)
+        #expect(huge.width == visible.width - 32)
+        #expect(huge.minY == visible.minY + 16)
+    }
+
+    @Test func splitMovesAndStaysInRange() {
+        #expect(PanelGeometry.split(0.55, movedBy: 100, across: 1000) == 0.65)
+        #expect(PanelGeometry.split(0.55, movedBy: -1000, across: 1000) == PanelGeometry.splitRange.lowerBound)
+        #expect(PanelGeometry.split(0.55, movedBy: 1000, across: 1000) == PanelGeometry.splitRange.upperBound)
+    }
+
     @Test func previewSitsBelowPanel() {
         let visible = CGRect(x: 47, y: 0, width: 3393, height: 1410)
         let panel = PanelGeometry.frame(in: visible)

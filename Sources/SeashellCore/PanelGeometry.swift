@@ -12,15 +12,38 @@ public enum PanelGeometry {
     /// corner, where hot corners live.
     public static let cornerMargin: CGFloat = 100
 
+    /// The smallest you can drag the panel to, at Small text (scaled like the rest).
+    public static let minimumSize = CGSize(width: 640, height: 220)
+    /// Stash's share of the width; the rest is Notes.
+    public static let defaultSplit: CGFloat = 0.55
+    public static let splitRange: ClosedRange<CGFloat> = 0.3...0.75
+
     /// Centered horizontally, just below the menu bar. `visibleFrame` is the
-    /// screen's area without the menu bar and Dock. `scale` follows the text
-    /// size, so bigger text gets a bigger panel, as far as the screen allows.
-    public static func frame(in visibleFrame: CGRect, scale: CGFloat = 1) -> CGRect {
-        let width = min(maxWidth * scale, visibleFrame.width - 2 * margin)
-        let height = min(height * scale, visibleFrame.height - 2 * margin)
+    /// screen's area without the menu bar and Dock. `size` is the size you
+    /// dragged it to on this display, if any, measured at Small text; `scale`
+    /// follows the text size. Never bigger than the screen allows.
+    public static func frame(in visibleFrame: CGRect, scale: CGFloat = 1, size: CGSize? = nil) -> CGRect {
+        let base = size ?? CGSize(width: maxWidth, height: height)
+        let width = min(max(base.width, minimumSize.width) * scale, visibleFrame.width - 2 * margin)
+        let height = min(max(base.height, minimumSize.height) * scale, visibleFrame.height - 2 * margin)
         return CGRect(x: visibleFrame.midX - width / 2,
                       y: visibleFrame.maxY - margin / 2 - height,
                       width: width, height: height)
+    }
+
+    /// The panel after dragging an edge. Width changes on both sides, so it stays
+    /// centered; the top stays under the menu bar. Kept between the minimum
+    /// size and the screen.
+    public static func resized(_ frame: CGRect, by delta: CGSize, scale: CGFloat, in visibleFrame: CGRect) -> CGRect {
+        let width = min(max(frame.width + delta.width, minimumSize.width * scale), visibleFrame.width - 2 * margin)
+        let height = min(max(frame.height + delta.height, minimumSize.height * scale), frame.maxY - visibleFrame.minY - margin)
+        return CGRect(x: visibleFrame.midX - width / 2, y: frame.maxY - height, width: width, height: height)
+    }
+
+    /// Stash's share after dragging the gap between the cards by `dx` points.
+    public static func split(_ fraction: CGFloat, movedBy dx: CGFloat, across width: CGFloat) -> CGFloat {
+        guard width > 0 else { return fraction }
+        return min(max(fraction + dx / width, splitRange.lowerBound), splitRange.upperBound)
     }
 
     /// Where the panel slides from: the same frame, raised by its height, so it
