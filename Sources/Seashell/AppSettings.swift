@@ -15,6 +15,7 @@ final class AppSettings {
         static let largeFileLimit = "largeFileLimit"
         static let shakeSensitivity = "shakeSensitivity"
         static let opensOnPullDown = "opensOnPullDown"
+        static let shakeIgnoredApps = "shakeIgnoredApps"
     }
 
     var theme: Theme {
@@ -47,11 +48,35 @@ final class AppSettings {
         }
     }
 
+    /// Apps (bundle IDs) in which shakes are ignored, for both the drop shelf and
+    /// the grab shelf: drawing apps and games move the pointer fast on purpose.
+    var shakeIgnoredApps: [String] {
+        didSet {
+            UserDefaults.standard.set(shakeIgnoredApps, forKey: Key.shakeIgnoredApps)
+            Log.info("Shakes ignored in: \(shakeIgnoredApps.isEmpty ? "no apps" : shakeIgnoredApps.joined(separator: ", "))")
+        }
+    }
+
+    func setShakesIgnored(_ ignored: Bool, in bundleID: String) {
+        var apps = shakeIgnoredApps.filter { $0 != bundleID }
+        if ignored { apps.append(bundleID) }
+        shakeIgnoredApps = apps
+    }
+
+    /// False while one of those apps is in front.
+    func allowsShake() -> Bool {
+        guard let app = NSWorkspace.shared.frontmostApplication, let id = app.bundleIdentifier,
+              shakeIgnoredApps.contains(id) else { return true }
+        Log.info("Shake ignored: \(app.localizedName ?? id) is in front")
+        return false
+    }
+
     private init() {
         theme = Self.load(Key.theme) ?? .standard
         largeFileLimit = Self.load(Key.largeFileLimit) ?? .standard
         shakeSensitivity = Self.load(Key.shakeSensitivity) ?? .standard
         opensOnPullDown = UserDefaults.standard.object(forKey: Key.opensOnPullDown) as? Bool ?? true
+        shakeIgnoredApps = UserDefaults.standard.stringArray(forKey: Key.shakeIgnoredApps) ?? []
     }
 
     private static func load<Value: RawRepresentable>(_ key: String) -> Value? where Value.RawValue == String {

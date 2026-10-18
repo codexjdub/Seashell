@@ -1,5 +1,6 @@
 import AppKit
 import SeashellCore
+import UniformTypeIdentifiers
 
 /// The Settings window, from "Settings…" in the menu bar menu or ⌘, in the panel.
 /// The only place to choose the theme and text size besides ⌘+ / ⌘− / ⌘0.
@@ -14,6 +15,7 @@ final class SettingsWindow: NSObject {
     private let largeFilePopup = NSPopUpButton()
     private let shakePopup = NSPopUpButton()
     private let pullDownCheckbox = NSButton(checkboxWithTitle: "Pull down at the top edge to open the panel", target: nil, action: nil)
+    private let ignoredApps = IgnoredAppsView()
 
     func show() {
         let isNew = !window.isVisible
@@ -71,6 +73,7 @@ final class SettingsWindow: NSObject {
         Self.select(settings.largeFileLimit, in: largeFilePopup)
         Self.select(settings.shakeSensitivity, in: shakePopup)
         pullDownCheckbox.state = settings.opensOnPullDown ? .on : .off
+        ignoredApps.show(settings.shakeIgnoredApps)
     }
 
     /// Not observable: macOS owns it, and you can change it in System Settings.
@@ -112,7 +115,8 @@ final class SettingsWindow: NSObject {
             [Self.label("Ask before stashing:"), largeFilePopup],
             [empty, Self.note("Everything in Stash uploads to iCloud and counts against your storage.")],
             [Self.label("Shake to show the shelf:"), shakePopup],
-            [empty, Self.note("Shake the pointer while dragging something.")],
+            [empty, Self.note("Shake while dragging something to drop it; ⌥-shake to grab from Stash.")],
+            [Self.label("Ignore shakes in:"), ignoredApps],
             [Self.label("Top edge:"), pullDownCheckbox],
         ])
         grid.rowSpacing = 8
@@ -120,7 +124,10 @@ final class SettingsWindow: NSObject {
         grid.rowAlignment = .firstBaseline
         grid.column(at: 0).xPlacement = .trailing
         // A little more room above each group.
-        for row in [3, 5, 7, 9] { grid.row(at: row).topPadding = 8 }
+        for row in [3, 5, 7, 10] { grid.row(at: row).topPadding = 8 }
+        // The list has no baseline: line its label up with the top of the list.
+        grid.row(at: 9).rowAlignment = .none
+        grid.row(at: 9).yPlacement = .top
         loginNoteRow = grid.row(at: 4)
         loginNoteRow?.isHidden = true
         grid.translatesAutoresizingMaskIntoConstraints = false
@@ -185,5 +192,129 @@ final class SettingsPanelWindow: NSWindow {
             return true
         }
         return super.performKeyEquivalent(with: event)
+    }
+}
+
+/// The apps in which shakes are ignored: a short list with + and − below it.
+@MainActor
+final class IgnoredAppsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
+    private let table = NSTableView()
+    private let buttons = NSSegmentedControl(images: [NSImage(systemSymbolName: "plus", accessibilityDescription: "Add an app")!,
+                                                      NSImage(systemSymbolName: "minus", accessibilityDescription: "Remove the app")!],
+                                             trackingMode: .momentary, target: nil, action: nil)
+    private let placeholder = NSTextField(wrappingLabelWithString: "None yet. The menu bar menu can add the app you’re in.")
+    private var ids: [String] = []
+
+    init() {
+        super.init(frame: .zero)
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("app"))
+        table.addTableColumn(column)
+        table.headerView = nil
+        table.rowHeight = 24
+        table.style = .plain
+        table.dataSource = self
+        table.delegate = self
+        let scroll = NSScrollView()
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.borderType = .bezelBorder
+        buttons.target = self
+        buttons.action = #selector(buttonClicked)
+        buttons.setEnabled(false, forSegment: 1)
+        placeholder.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        placeholder.textColor = .tertiaryLabelColor
+        placeholder.alignment = .center
+        for view in [scroll, buttons, placeholder] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: 280),
+            scroll.topAnchor.constraint(equalTo: topAnchor),
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scroll.heightAnchor.constraint(equalToConstant: 80),
+            buttons.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 4),
+            buttons.leadingAnchor.constraint(equalTo: leadingAnchor),
+            buttons.bottomAnchor.constraint(equalTo: bottomAnchor),
+            placeholder.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
+            placeholder.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 16),
+            placeholder.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -16),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    func show(_ ids: [String]) {
+        guard ids != self.ids else { return }
+        self.ids = ids
+        table.reloadData()
+        placeholder.isHidden = !ids.isEmpty
+        buttons.setEnabled(table.selectedRow >= 0, forSegment: 1)
+    }
+
+    @objc private func buttonClicked() {
+        if buttons.selectedSegment == 0 {
+            chooseApps()
+        } else if ids.indices.contains(table.selectedRow) {
+            AppSettings.shared.setShakesIgnored(false, in: ids[table.selectedRow])
+        }
+    }
+
+    private func chooseApps() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = true
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.prompt = "Ignore Shakes"
+        panel.message = "Choose apps where shaking the pointer shouldn’t open Seashell’s shelves."
+        let add: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK else { return }
+            for id in panel.urls.compactMap({ Bundle(url: $0)?.bundleIdentifier }) {
+                AppSettings.shared.setShakesIgnored(true, in: id)
+            }
+        }
+        if let window { panel.beginSheetModal(for: window, completionHandler: add) } else { add(panel.runModal()) }
+    }
+
+    // MARK: List
+
+    func numberOfRows(in tableView: NSTableView) -> Int { ids.count }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let (name, icon) = Self.appInfo(ids[row])
+        let cell = NSTableCellView()
+        let image = NSImageView(image: icon ?? NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)!)
+        let label = NSTextField(labelWithString: name)
+        label.lineBreakMode = .byTruncatingTail
+        for view in [image, label] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+            image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            image.widthAnchor.constraint(equalToConstant: 18),
+            image.heightAnchor.constraint(equalToConstant: 18),
+            label.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 6),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -4),
+            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+        ])
+        cell.toolTip = ids[row]
+        return cell
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        buttons.setEnabled(table.selectedRow >= 0, forSegment: 1)
+    }
+
+    /// Its name and icon, or just the bundle ID if it isn't on this Mac.
+    private static func appInfo(_ id: String) -> (String, NSImage?) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { return (id, nil) }
+        let path = url.path(percentEncoded: false)
+        var name = FileManager.default.displayName(atPath: path)
+        if name.hasSuffix(".app") { name.removeLast(4) }
+        return (name, NSWorkspace.shared.icon(forFile: path))
     }
 }

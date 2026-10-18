@@ -55,11 +55,26 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         let toggle = NSMenuItem(title: panel.isShowing ? "Close Seashell" : "Open Seashell", action: #selector(togglePanel), keyEquivalent: "")
         toggle.target = self
         menu.addItem(toggle)
+        // For the app you're in (opening this menu leaves it in front).
+        if let app = NSWorkspace.shared.frontmostApplication, app != .current, let id = app.bundleIdentifier {
+            let item = NSMenuItem(title: "Ignore Shakes in \(app.localizedName ?? id)", action: #selector(toggleIgnoreShakes),
+                                  keyEquivalent: "")
+            item.target = self
+            item.representedObject = id
+            item.state = AppSettings.shared.shakeIgnoredApps.contains(id) ? .on : .off
+            menu.addItem(item)
+        }
         menu.addItem(.separator())
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
         menu.addItem(NSMenuItem(title: "Quit Seashell", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    }
+
+    @objc private func toggleIgnoreShakes(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        Log.info("Menu: \(sender.title) \(sender.state == .on ? "off" : "on")")
+        AppSettings.shared.setShakesIgnored(sender.state != .on, in: id)
     }
 
     @objc private func openSettings() {

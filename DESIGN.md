@@ -37,6 +37,7 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
   - Open Seashell when you log in: off until turned on; macOS tracks it (`SMAppService`) and lists it in Login Items. If macOS wants approval, Seashell opens Login Items and says so.
   - Ask before stashing: Over 500 MB, Over 1 GB (default), Over 5 GB, or Never.
   - Shake to show the shelf: Off, Gentle (2 swings of 15 pt), Normal (3 of 20 pt in 0.6 s, the default), Firm (4 of 30 pt in 0.8 s).
+  - Ignore shakes in: a list of apps (+ chooses from Applications, − removes) where shakes do nothing, for both the drop shelf and the grab shelf, judged by the app in front. Drawing apps and games move the pointer fast on purpose. The menu bar menu also has "Ignore Shakes in <app>" for the app you're in.
   - Pull down at the top edge to open the panel: on by default. Pushing up still closes it, and holding a drag at the top edge still opens it.
 - Edit shortcuts (⌘X ⌘C ⌘V ⌘A ⌘Z ⇧⌘Z) are wired up by hand: a menu bar app has no Edit menu. In the editor they use the system clipboard as usual.
 - Dropping onto the menu bar icon stashes into `Main`.

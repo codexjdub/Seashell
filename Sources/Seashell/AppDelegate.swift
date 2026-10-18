@@ -55,7 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let floatingShelf = FloatingShelf(store: store, dropper: dropper)
         self.floatingShelf = floatingShelf
 
-        dragWatcher.onShake = { floatingShelf.show(at: $0) }
+        dragWatcher.onShake = { point in
+            guard AppSettings.shared.allowsShake() else { return }
+            floatingShelf.show(at: point)
+        }
         observeChanges { [dragWatcher] in dragWatcher.setShakeSensitivity(AppSettings.shared.shakeSensitivity) }
 
         let grabShelf = GrabShelf(store: store)
@@ -67,7 +70,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let target = PanelController.app(at: point), target != NSRunningApplication.current else { return }
             target.activate()
         }
-        optionShakeWatcher.onShake = { grabShelf.toggle(at: $0) }
+        optionShakeWatcher.onShake = { point in
+            guard AppSettings.shared.allowsShake() else { return }
+            grabShelf.toggle(at: point)
+        }
         observeChanges { [optionShakeWatcher] in optionShakeWatcher.setShakeSensitivity(AppSettings.shared.shakeSensitivity) }
         optionShakeWatcher.start()
         dragWatcher.onHoldAtTopEdge = { panel.open(on: NSScreen.containing($0), reason: "drag held at top edge") }
