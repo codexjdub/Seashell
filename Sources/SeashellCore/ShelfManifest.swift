@@ -1,7 +1,8 @@
 import Foundation
 
-/// A shelf's `.seashell.json`: item order and where each item came from. It syncs
-/// with the shelf, so every Mac sees the same order.
+/// A shelf's `.seashell.json`: item order and where each item came from. The
+/// Stash folder has one too, for the order of the shelves. It syncs with the
+/// folder, so every Mac sees the same order.
 public struct ShelfManifest: Codable, Equatable, Sendable {
     public static let fileName = ".seashell.json"
 

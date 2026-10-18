@@ -17,12 +17,12 @@ final class StashPanelController: NSViewController {
     private let dropper: StashDropper
     private let thumbnails = ThumbnailLoader()
     private let preview = PreviewWindow()
-    private let tabs = NSStackView()
+    /// Shelf tabs and the + button, wrapping onto more rows when they don't fit.
+    private let tabs = FlowView()
     private let layout = NSCollectionViewFlowLayout()
     private let emptyLabel = PassThroughLabel(labelWithString: "Drop files here, or shake while dragging.")
     private var currentShelfName = SeashellFolders.defaultShelfName
     private var items: [StashItem] = []
-    private var headerHeight: NSLayoutConstraint?
     /// The items in the current drag out of the grid. Text and links go on the
     /// pasteboard as content, not file URLs, so moving to a tab needs these.
     private var draggedURLs: [URL] = []
@@ -45,15 +45,13 @@ final class StashPanelController: NSViewController {
     override func loadView() {
         let root = NSView()
 
-        tabs.orientation = .horizontal
         tabs.spacing = 6
         let add = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: "New shelf")!,
                            target: self, action: #selector(addShelf))
         add.bezelStyle = .accessoryBarAction
         add.toolTip = "New shelf"
-        let header = NSStackView(views: [tabs, add])
-        header.orientation = .horizontal
-        header.spacing = 8
+        tabs.views = [add]
+        let header = tabs
 
         layout.itemSize = StashItemCell.tileSize
         layout.minimumInteritemSpacing = 6
@@ -87,14 +85,12 @@ final class StashPanelController: NSViewController {
             subview.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(subview)
         }
-        // The same height as Notes' header, so both sit on one center line.
-        let headerHeight = header.heightAnchor.constraint(equalToConstant: 28)
-        self.headerHeight = headerHeight
+        // Rows as tall as Notes' header, so the first row and Notes' header
+        // sit on one center line.
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
-            headerHeight,
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
-            header.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -16),
+            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
             scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
@@ -111,8 +107,9 @@ final class StashPanelController: NSViewController {
     private func applyTextSize() {
         _ = TextSizeSetting.shared.size
         emptyLabel.font = UIScale.font(14)
-        headerHeight?.constant = UIScale.pt(28)
+        tabs.rowHeight = UIScale.pt(28)
         tabButtons.forEach { $0.font = UIScale.font(13) }
+        tabs.needsLayout = true
         layout.itemSize = StashItemCell.tileSize
         layout.invalidateLayout()
         grid.reloadData()
@@ -184,25 +181,42 @@ final class StashPanelController: NSViewController {
     // MARK: Tabs
 
     private var tabButtons: [ShelfTabButton] {
-        tabs.arrangedSubviews.compactMap { $0 as? ShelfTabButton }
+        tabs.views.compactMap { $0 as? ShelfTabButton }
     }
 
     /// Rebuilds the tabs only when the shelves changed, so a drag hovering over
     /// a tab isn't interrupted by unrelated refreshes.
     private func updateTabs(for shelves: [Shelf]) {
         if tabButtons.map(\.shelf) != shelves {
-            tabButtons.forEach { $0.removeFromSuperview() }
+            var buttons: [ShelfTabButton] = []
             for shelf in shelves {
                 let button = ShelfTabButton(shelf: shelf, target: self, action: #selector(tabClicked))
                 button.font = UIScale.font(13)
                 button.operation = { [weak self] info in self?.dropOperation(info, onto: shelf) ?? [] }
                 button.onDrop = { [weak self] info in self?.drop(info, onto: shelf) ?? false }
+                button.onReorder = { [weak self] name, after in self?.moveShelf(named: name, nextTo: shelf, after: after) }
                 button.menu = shelf.isDefault ? nil : tabMenu(for: shelf)
-                tabs.addArrangedSubview(button)
+                buttons.append(button)
             }
+            // The + button stays last.
+            tabs.views = buttons + tabs.views.filter { !($0 is ShelfTabButton) }
         }
         for button in tabButtons {
             button.state = button.shelf.name == currentShelfName ? .on : .off
+        }
+    }
+
+    /// A tab dragged onto another goes just before or after it. Main stays first.
+    private func moveShelf(named name: String, nextTo target: Shelf, after: Bool) {
+        guard name != target.name, let dragged = store.shelves.first(where: { $0.name == name }) else { return }
+        let others = store.shelves.filter { !$0.isDefault && $0.name != name }.map(\.name)
+        let index = target.isDefault ? 0 : (others.firstIndex(of: target.name).map { after ? $0 + 1 : $0 } ?? others.count)
+        note("tab “\(name)” moved \(after ? "after" : "before") “\(target.name)”")
+        do {
+            try store.library.moveShelf(dragged, to: index)
+            store.reload()
+        } catch {
+            Alerts.showError("Couldn’t move “\(name)”", error)
         }
     }
 
@@ -438,10 +452,21 @@ extension StashPanelController: NSCollectionViewDataSource, NSCollectionViewDele
 /// A shelf tab: click to show it; drop files or text on it to stash there, or
 /// drop items from the grid on it to move them there.
 @MainActor
-final class ShelfTabButton: NSButton {
+/// A shelf tab. Items dropped on it go into that shelf, and dragging the tab
+/// itself onto another tab reorders the shelves (all but Main, which stays first).
+final class ShelfTabButton: NSButton, NSDraggingSource {
+    /// What a dragged tab carries: its shelf's name. Only Seashell reads it.
+    static let shelfType = NSPasteboard.PasteboardType("io.github.codexjdub.seashell.shelf")
+
     let shelf: Shelf
     var operation: ((any NSDraggingInfo) -> NSDragOperation)?
     var onDrop: ((any NSDraggingInfo) -> Bool)?
+    /// A tab dropped here: its shelf's name, and whether it goes after this tab.
+    var onReorder: ((_ name: String, _ after: Bool) -> Void)?
+    /// Where a dragged tab would land: true after this one, false before it.
+    private var insertAfter: Bool? {
+        didSet { needsDisplay = true }
+    }
 
     init(shelf: Shelf, target: AnyObject, action: Selector) {
         self.shelf = shelf
@@ -451,28 +476,97 @@ final class ShelfTabButton: NSButton {
         self.action = action
         setButtonType(.pushOnPushOff)
         bezelStyle = .accessoryBar
-        registerForDraggedTypes(StashDropper.acceptedTypes)
+        registerForDraggedTypes(StashDropper.acceptedTypes + [Self.shelfType])
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    // MARK: Dragging the tab
+
+    /// A click selects the tab; moving a few points first drags it instead.
+    override func mouseDown(with event: NSEvent) {
+        // Control-click still opens the tab's menu.
+        guard !shelf.isDefault, !event.modifierFlags.contains(.control), let window else { return super.mouseDown(with: event) }
+        let start = event.locationInWindow
+        while let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {
+            if next.type == .leftMouseUp {
+                sendAction(action, to: target)
+                return
+            }
+            if hypot(next.locationInWindow.x - start.x, next.locationInWindow.y - start.y) > 4 {
+                beginDraggingTab(with: event)
+                return
+            }
+        }
+    }
+
+    private func beginDraggingTab(with event: NSEvent) {
+        let item = NSPasteboardItem()
+        item.setString(shelf.name, forType: Self.shelfType)
+        let dragged = NSDraggingItem(pasteboardWriter: item)
+        let snapshot = NSImage(size: bounds.size)
+        if let rep = bitmapImageRepForCachingDisplay(in: bounds) {
+            cacheDisplay(in: bounds, to: rep)
+            snapshot.addRepresentation(rep)
+        }
+        dragged.setDraggingFrame(bounds, contents: snapshot)
+        beginDraggingSession(with: [dragged], event: event, source: self)
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        context == .withinApplication ? .move : []
+    }
+
+    // MARK: Drops
+
+    private static func draggedShelf(_ info: any NSDraggingInfo) -> String? {
+        info.draggingPasteboard.string(forType: shelfType)
+    }
+
+    /// Nothing goes before Main.
+    private func reorder(_ info: any NSDraggingInfo, name: String) -> NSDragOperation {
+        guard name != shelf.name else {
+            insertAfter = nil
+            return []
+        }
+        insertAfter = shelf.isDefault || convert(info.draggingLocation, from: nil).x > bounds.midX
+        return .move
+    }
+
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        if let name = Self.draggedShelf(sender) { return reorder(sender, name: name) }
         let result = operation?(sender) ?? []
         isHighlighted = !result.isEmpty
         return result
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        operation?(sender) ?? []
+        if let name = Self.draggedShelf(sender) { return reorder(sender, name: name) }
+        return operation?(sender) ?? []
     }
 
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
         isHighlighted = false
+        insertAfter = nil
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         isHighlighted = false
+        if let name = Self.draggedShelf(sender) {
+            defer { insertAfter = nil }
+            guard let after = insertAfter else { return false }
+            onReorder?(name, after)
+            return true
+        }
         return onDrop?(sender) ?? false
+    }
+
+    /// A line on the side where a dragged tab would land.
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let insertAfter else { return }
+        NSColor.controlAccentColor.setFill()
+        NSRect(x: insertAfter ? bounds.maxX - 2 : 0, y: 2, width: 2, height: bounds.height - 4).fill()
     }
 }
 

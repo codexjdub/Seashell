@@ -45,7 +45,7 @@ public enum ShelfError: LocalizedError, Equatable {
         switch self {
         case .invalidName(let name): "“\(name)” can’t be used as a shelf name."
         case .nameTaken(let name): "There’s already a shelf called “\(name)”."
-        case .defaultShelf: "The \(SeashellFolders.defaultShelfName) shelf can’t be renamed or deleted."
+        case .defaultShelf: "The \(SeashellFolders.defaultShelfName) shelf can’t be renamed, moved or deleted."
         }
     }
 }
@@ -60,15 +60,42 @@ public struct StashLibrary: Sendable {
         self.mover = mover
     }
 
-    /// Main first, then the rest in Finder's name order.
+    /// Main first, then the order you dragged the tabs into (the Stash folder's
+    /// `.seashell.json`, so it syncs), then any shelves it doesn't list yet
+    /// (made in Finder or on another Mac) in Finder's name order.
     public func shelves() -> [Shelf] {
-        contents(of: stash, keys: [.isDirectoryKey])
+        let order = ShelfManifest.read(in: stash).order
+        let position = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        return contents(of: stash, keys: [.isDirectoryKey])
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
             .map(Shelf.init)
             .sorted { a, b in
                 if a.isDefault != b.isDefault { return a.isDefault }
-                return a.name.localizedStandardCompare(b.name) == .orderedAscending
+                switch (position[a.name], position[b.name]) {
+                case let (x?, y?): return x < y
+                case (.some, nil): return true
+                case (nil, .some): return false
+                case (nil, nil): return a.name.localizedStandardCompare(b.name) == .orderedAscending
+                }
             }
+    }
+
+    /// Moves `shelf` to `index` among the shelves after Main, and saves the order.
+    public func moveShelf(_ shelf: Shelf, to index: Int) throws {
+        guard !shelf.isDefault else { throw ShelfError.defaultShelf }
+        var names = shelfOrder().filter { $0 != shelf.name }
+        names.insert(shelf.name, at: min(max(index, 0), names.count))
+        try saveShelfOrder(names)
+        Log.info("Moved shelf \(shelf.name) to position \(index + 2)")
+    }
+
+    /// The shelves after Main, as they're shown now.
+    private func shelfOrder() -> [String] {
+        shelves().filter { !$0.isDefault }.map(\.name)
+    }
+
+    private func saveShelfOrder(_ names: [String]) throws {
+        try ShelfManifest.update(in: stash) { $0.order = names }
     }
 
     /// Items added outside Seashell (in Finder, or not yet in the manifest) come
@@ -109,27 +136,35 @@ public struct StashLibrary: Sendable {
         }
     }
 
+    /// A new shelf goes at the end.
     @discardableResult
     public func createShelf(named name: String) throws -> Shelf {
         let url = try freeShelfURL(for: name)
+        let existing = shelfOrder()
         try Coordinated.write(url) { try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: false) }
         Log.info("Created shelf \(url.lastPathComponent)")
+        try? saveShelfOrder(existing + [url.lastPathComponent])
         return Shelf(url: url)
     }
 
+    /// Keeps its place in the order.
     @discardableResult
     public func renameShelf(_ shelf: Shelf, to name: String) throws -> Shelf {
         guard !shelf.isDefault else { throw ShelfError.defaultShelf }
         let url = try freeShelfURL(for: name)
+        let order = shelfOrder().map { $0 == shelf.name ? url.lastPathComponent : $0 }
         try Coordinated.move(shelf.url, to: url)
         Log.info("Renamed shelf \(shelf.name) → \(url.lastPathComponent)")
+        try? saveShelfOrder(order)
         return Shelf(url: url)
     }
 
     /// Sends a shelf and everything in it to the Trash.
     public func deleteShelf(_ shelf: Shelf) throws {
         guard !shelf.isDefault else { throw ShelfError.defaultShelf }
+        let order = shelfOrder().filter { $0 != shelf.name }
         try mover.delete(shelf.url)
+        try? saveShelfOrder(order)
     }
 
     private func freeShelfURL(for name: String) throws -> URL {

@@ -24,6 +24,8 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 - Dropping an item from the panel into another app brings that app to the front, so typing goes where the item landed, and closes the panel unless it's pinned.
 - Space previews the selected item in Seashell's own preview window below the panel (a Quick Look view, not the system Quick Look window, which misbehaves for an app that's never active). Space or Esc closes it; arrows move through items and the preview follows.
 - The close button closes the panel, pinned or not.
+- Shelf tabs wrap onto more rows when they don't fit, with + always last; the first row lines up with Notes' header.
+- Shelf tabs: Main first, then the order you drag them into (drag a tab onto another; a line shows where it lands). New shelves go at the end; ones made in Finder or on another Mac come after the saved order, by name. The order lives in `Stash/.seashell.json`, so every Mac sees it. A click still selects a tab; control-click or right-click opens Rename… / Delete….
 - The Stash tabs and the Notes header share one height, so tabs, +, Notes and the pencil sit on one center line.
 - Stash (55%) and Notes each sit on their own rounded, lightly tinted card with a small gap. The Notes card and Stash's note cards share one faint yellow wash, and the selected note is a little stronger. Dark Mode: 6% (border 22%, selected 16%). Light Mode needs a little more to show: 10% (border 30%, selected 22%). The Clipboard becomes a third card with Milestone 4 (on hold).
 - Notes: a list (most recently edited first) beside a plain-text editor; Markdown is kept exactly as typed. The first line is the title, and the file is renamed to match when you leave the note (switch notes, close the panel, quit). Saves 1 s after you stop typing. ⌘N or the pencil adds a selected "New Note" row with the cursor in the editor; it gets a file once you type, and left empty it just disappears. An existing note left empty goes to the Trash. Rows show live titles as you type. Drag a note out as its text (plus a `.md` for Finder); drop text onto the list to start a note.
@@ -39,7 +41,7 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 - Edit shortcuts (⌘X ⌘C ⌘V ⌘A ⌘Z ⇧⌘Z) are wired up by hand: a menu bar app has no Edit menu. In the editor they use the system clipboard as usual.
 - Dropping onto the menu bar icon stashes into `Main`.
 
-Shaking the cursor during a drag pops a **floating shelf** near the cursor with three drop zones: Stash, Copy, Cut (Stash only until the Clipboard exists). Its Stash zone saves into the default `Main` shelf. It hides about a second after the mouse is released, whether or not you dropped on it, and never deletes anything.
+Shaking the cursor during a drag pops a **floating shelf** near the cursor with one drop zone per shelf, in the panel's tab order (Main first), so you drop straight into the shelf you want. 5 shelves show at a time; past that, holding the drag over **More…** for 0.4 s shows the next 5 in the same spot (the shelf keeps its size, so More… stays under the pointer), and on the last page it reads **Back to Main…** and starts over. Move off More… and back to flip again. Copy and Cut zones would join it with the Clipboard (on hold). It hides about a second after the mouse is released, whether or not you dropped on it, and never deletes anything.
 
 ## Behaviour
 
@@ -91,7 +93,8 @@ Rules:
 │   │   ├── report.pdf
 │   │   ├── Recently, I lived for a few.txt ← stashed text, named by its first words
 │   │   └── .seashell.json            ← item order, where each item came from (Put Back)
-│   └── Work/
+│   ├── Work/
+│   └── .seashell.json                ← shelf order (after Main)
 └── Notes/
     └── Groceries.md                  ← one Markdown file per note
 
@@ -130,7 +133,7 @@ Sources/
     PanelController     non-activating NSPanel, top-edge slide-down
     EdgeTrigger         global scroll monitor at the top screen edge
     ShakeDetector       global drag monitor + drag pasteboard → shake detection
-    FloatingShelf       three-zone drop panel near the cursor
+    FloatingShelf       drop panel near the cursor: one zone per shelf, 5 per page, More… flips pages
     DragOut             NSDraggingSource per area (operation masks below)
     SettingsWindow      theme, text size, launch at login (SMAppService), large-file limit, shake sensitivity, pull down
     Views/              SwiftUI: StashView, ClipboardView, NotesView

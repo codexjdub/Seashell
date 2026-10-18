@@ -19,6 +19,43 @@ struct StashLibraryTests {
         #expect(library.shelves().map(\.name) == ["Main", "archive", "Shelf 9", "Shelf 10", "Work"])
     }
 
+    @Test func shelvesKeepTheOrderYouDragThemInto() throws {
+        _ = try folder.folder("Stash/Main")
+        let beta = try library.createShelf(named: "Beta")
+        let alpha = try library.createShelf(named: "Alpha")
+        #expect(library.shelves().map(\.name) == ["Main", "Beta", "Alpha"], "new shelves go at the end")
+
+        try library.moveShelf(alpha, to: 0)
+        #expect(library.shelves().map(\.name) == ["Main", "Alpha", "Beta"])
+
+        // Made in Finder or on another Mac: after the saved order, by name.
+        for name in ["Zed", "Aardvark"] { _ = try folder.folder("Stash/\(name)") }
+        #expect(library.shelves().map(\.name) == ["Main", "Alpha", "Beta", "Aardvark", "Zed"])
+
+        try library.moveShelf(beta, to: 99)
+        #expect(library.shelves().map(\.name) == ["Main", "Alpha", "Aardvark", "Zed", "Beta"])
+    }
+
+    @Test func renamedShelfKeepsItsPlaceAndDeletedOneLeavesTheOrder() throws {
+        _ = try folder.folder("Stash/Main")
+        let one = try library.createShelf(named: "One")
+        let two = try library.createShelf(named: "Two")
+        _ = try library.createShelf(named: "Three")
+        try library.moveShelf(two, to: 0)
+
+        _ = try library.renameShelf(two, to: "Zwei")
+        #expect(library.shelves().map(\.name) == ["Main", "Zwei", "One", "Three"])
+
+        try library.deleteShelf(one)
+        #expect(library.shelves().map(\.name) == ["Main", "Zwei", "Three"])
+        #expect(ShelfManifest.read(in: stash).order == ["Zwei", "Three"])
+    }
+
+    @Test func mainCannotMove() throws {
+        let main = Shelf(url: try folder.folder("Stash/Main"))
+        #expect(throws: ShelfError.defaultShelf) { try library.moveShelf(main, to: 1) }
+    }
+
     @Test func itemsAddedInFinderComeBeforeManifestOrder() throws {
         let main = Shelf(url: try folder.folder("Stash/Main"))
         let mover = try folder.mover()
