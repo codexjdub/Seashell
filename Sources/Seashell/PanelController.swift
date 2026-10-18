@@ -21,6 +21,8 @@ final class PanelController: NSObject {
     /// Clicks for which this answers true don't count as "outside", e.g. on
     /// Seashell's own menu bar icon, which may live outside Seashell's process.
     var ignoresClick: ((NSPoint) -> Bool)?
+    /// ⌘, in the panel.
+    var openSettings: (() -> Void)?
 
     private let stash: StashPanelController
     private let notes: NotesPanelController
@@ -29,20 +31,18 @@ final class PanelController: NSObject {
     /// The yellow of the note cards in Stash, so notes look alike in both.
     private let notesCard = PanelCard(isNotes: true)
     private var splitConstraint: NSLayoutConstraint?
+    /// Sizes around the pin-and-close pill, written at Small and scaled with the text.
+    private var scaledConstraints: [(constraint: NSLayoutConstraint, base: CGFloat)] = []
+    private let pill = NSVisualEffectView()
+    private static let pillWidth: CGFloat = 34
+    private static let pillButtonSize: CGFloat = 26
     private lazy var closeButton: NSButton = {
-        let button = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")!,
-                              target: self, action: #selector(closeButtonClicked))
-        button.bezelStyle = .accessoryBarAction
+        let button = PillButton(target: self, action: #selector(closeButtonClicked))
         button.contentTintColor = .secondaryLabelColor
         button.toolTip = "Close (also when pinned)"
         return button
     }()
-    private lazy var pinButton: NSButton = {
-        let button = NSButton(image: NSImage(), target: self, action: #selector(togglePin))
-        button.bezelStyle = .accessoryBarAction
-        button.setButtonType(.momentaryPushIn)
-        return button
-    }()
+    private lazy var pinButton: NSButton = PillButton(target: self, action: #selector(togglePin))
     private var clickMonitor: Any?
     private let dragPasteboard = NSPasteboard(name: .drag)
     /// Drag pasteboard change count at a left press outside the panel, until its release.
@@ -59,14 +59,37 @@ final class PanelController: NSObject {
 
     /// An open panel grows or shrinks with the text size, on the display it's on.
     private func textSizeChanged() {
-        let scale = UIScale.factor
+        _ = UIScale.factor
+        for (constraint, base) in scaledConstraints { constraint.constant = UIScale.pt(base) }
+        pill.layer?.cornerRadius = UIScale.pt(Self.pillWidth) / 2
+        updateCloseButton()
+        updatePinButton()
         guard isOpen, let screen = panel.screen else { return }
         stash.closePreview()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.15
-            panel.animator().setFrame(PanelGeometry.frame(in: screen.visibleFrame, scale: scale,
-                                                          size: PanelLayoutMemory.size(on: screen)), display: true)
+            panel.animator().setFrame(windowFrame(on: screen), display: true)
         }
+    }
+
+    // The window is wider than the panel: the pill sits outside its right edge,
+    // and the same room is left empty on the left so the panel stays centered.
+
+    private var sideSpace: CGFloat { UIScale.pt(PanelGeometry.sideColumn) }
+
+    /// The window for the panel at its remembered size on `screen`.
+    private func windowFrame(on screen: NSScreen) -> CGRect {
+        windowFrame(around: PanelGeometry.frame(in: screen.visibleFrame, scale: UIScale.factor,
+                                                size: PanelLayoutMemory.size(on: screen), sideSpace: sideSpace))
+    }
+
+    private func windowFrame(around panelFrame: CGRect) -> CGRect {
+        panelFrame.insetBy(dx: -sideSpace, dy: 0)
+    }
+
+    /// The panel itself, without the room for the pill.
+    private var panelFrame: CGRect {
+        panel.frame.insetBy(dx: sideSpace, dy: 0)
     }
 
     /// Open and actually on screen. Something else (Mission Control, say) can
@@ -90,7 +113,7 @@ final class PanelController: NSObject {
         // Already open there: nothing to do (comparing frames would restart the
         // slide-in whenever they differ by a fraction of a point).
         if isShowing, screen.displayID == openDisplay { return }
-        let frame = PanelGeometry.frame(in: screen.visibleFrame, scale: UIScale.factor, size: PanelLayoutMemory.size(on: screen))
+        let frame = windowFrame(on: screen)
 
         if !isOpen {
             panel.setFrame(PanelGeometry.hiddenFrame(for: frame), display: false)
@@ -134,7 +157,7 @@ final class PanelController: NSObject {
     /// the panel (which holds keyboard focus). Close the panel, or if it's pinned
     /// just let go of focus, and bring the app that took the drop to the front.
     private func droppedElsewhere(at point: NSPoint) {
-        guard isOpen, !panel.frame.contains(point) else { return }  // onto the panel's own tabs
+        guard isOpen, !panelFrame.contains(point) else { return }  // onto the panel's own tabs
         let target = Self.app(at: point)
         let name = target?.localizedName ?? "another app"
         if isPinned {
@@ -251,16 +274,17 @@ final class PanelController: NSObject {
     private func resize(by delta: CGSize) {
         guard let screen = panel.screen else { return }
         stash.closePreview()
-        panel.setFrame(PanelGeometry.resized(panel.frame, by: delta, scale: UIScale.factor, in: screen.visibleFrame), display: true)
+        let resized = PanelGeometry.resized(panelFrame, by: delta, scale: UIScale.factor, in: screen.visibleFrame, sideSpace: sideSpace)
+        panel.setFrame(windowFrame(around: resized), display: true)
     }
 
     /// Stored at Small text, so it still grows and shrinks with the text size.
     private func rememberSize() {
         guard let screen = panel.screen else { return }
         let scale = UIScale.factor
-        let size = CGSize(width: panel.frame.width / scale, height: panel.frame.height / scale)
-        PanelLayoutMemory.setSize(size, on: screen)
-        Log.info("Panel resized to \(Int(panel.frame.width)) × \(Int(panel.frame.height)) on \(screen.localizedName)")
+        let frame = panelFrame
+        PanelLayoutMemory.setSize(CGSize(width: frame.width / scale, height: frame.height / scale), on: screen)
+        Log.info("Panel resized to \(Int(frame.width)) × \(Int(frame.height)) on \(screen.localizedName)")
     }
 
     private var currentSplit = PanelGeometry.defaultSplit
@@ -296,12 +320,21 @@ final class PanelController: NSObject {
         Log.info(isPinned ? "Panel pinned: clicking elsewhere won’t close it" : "Panel unpinned")
     }
 
+    private func updateCloseButton() {
+        closeButton.image = Self.symbol("xmark", "Close")
+    }
+
     private func updatePinButton() {
-        pinButton.image = NSImage(systemSymbolName: isPinned ? "pin.fill" : "pin",
-                                  accessibilityDescription: isPinned ? "Unpin" : "Pin")
+        pinButton.image = Self.symbol(isPinned ? "pin.fill" : "pin", isPinned ? "Unpin" : "Pin")
         pinButton.contentTintColor = isPinned ? .controlAccentColor : .secondaryLabelColor
         pinButton.toolTip = isPinned ? "Unpin: close when clicking elsewhere"
                                      : "Pin: stay open when clicking elsewhere (Esc or pushing up still close it)"
+    }
+
+    /// A symbol sized with the text.
+    private static func symbol(_ name: String, _ description: String) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: description)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: UIScale.pt(12), weight: .medium))
     }
 
     private func stopWatchingClicks() {
@@ -361,19 +394,56 @@ final class PanelController: NSObject {
         applySplit(PanelLayoutMemory.split)
         addDragHandles(to: background)
         panel.onNewNote = { [weak self] in self?.notes.newNote() }
-        updatePinButton()
-        for button in [pinButton, closeButton] {
-            button.translatesAutoresizingMaskIntoConstraints = false
-            background.addSubview(button)
-        }
-        NSLayoutConstraint.activate([
-            closeButton.topAnchor.constraint(equalTo: background.topAnchor, constant: 12),
-            closeButton.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -14),
-            pinButton.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
-            pinButton.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -6),
-        ])
-        panel.contentView = background
+        panel.onSettings = { [weak self] in self?.openSettings?() }
+        panel.contentView = makeWindowContent(around: background)
         return panel
+    }
+
+    /// The panel, with the pin-and-close pill just outside its top right
+    /// corner: they act on the whole panel, not on Notes. The window around
+    /// them is see-through, and clicks there go to whatever is underneath.
+    private func makeWindowContent(around background: NSView) -> NSView {
+        updateCloseButton()
+        updatePinButton()
+        pill.material = .popover
+        pill.state = .active
+        pill.wantsLayer = true
+        pill.layer?.masksToBounds = true
+        pill.layer?.cornerRadius = UIScale.pt(Self.pillWidth) / 2
+        let buttons = NSStackView(views: [pinButton, closeButton])
+        buttons.orientation = .vertical
+        buttons.spacing = 4
+        buttons.translatesAutoresizingMaskIntoConstraints = false
+        pill.addSubview(buttons)
+
+        let container = NSView()
+        for view in [background, pill] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(view)
+        }
+        let side = PanelGeometry.sideColumn
+        let gap = side - Self.pillWidth
+        let scaled: [(NSLayoutConstraint, CGFloat)] = [
+            (background.leadingAnchor.constraint(equalTo: container.leadingAnchor), side),
+            (container.trailingAnchor.constraint(equalTo: background.trailingAnchor), side),
+            (pill.leadingAnchor.constraint(equalTo: background.trailingAnchor), gap),
+            (pill.widthAnchor.constraint(equalToConstant: 0), Self.pillWidth),
+            (pill.heightAnchor.constraint(equalToConstant: 0), 2 * Self.pillButtonSize + 12),
+            (pinButton.widthAnchor.constraint(equalToConstant: 0), Self.pillButtonSize),
+            (pinButton.heightAnchor.constraint(equalToConstant: 0), Self.pillButtonSize),
+            (closeButton.widthAnchor.constraint(equalToConstant: 0), Self.pillButtonSize),
+            (closeButton.heightAnchor.constraint(equalToConstant: 0), Self.pillButtonSize),
+        ]
+        scaledConstraints = scaled.map { (constraint: $0.0, base: $0.1) }
+        for (constraint, base) in scaledConstraints { constraint.constant = UIScale.pt(base) }
+        NSLayoutConstraint.activate(scaledConstraints.map(\.constraint) + [
+            background.topAnchor.constraint(equalTo: container.topAnchor),
+            background.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            pill.topAnchor.constraint(equalTo: background.topAnchor),
+            buttons.centerXAnchor.constraint(equalTo: pill.centerXAnchor),
+            buttons.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+        ])
+        return container
     }
 }
 
@@ -395,12 +465,52 @@ final class PanelCard: NSView {
         NSColor.windowBackgroundColor.withAlphaComponent(0.55).setFill()
         path.fill()
         if isNotes {
-            NoteTint.color.withAlphaComponent(NoteTint.fill).setFill()
+            NoteTint.color.withAlphaComponent(NoteTint.fill.value(in: effectiveAppearance)).setFill()
             path.fill()
         }
-        (isNotes ? NoteTint.color.withAlphaComponent(NoteTint.border) : .separatorColor).setStroke()
+        (isNotes ? NoteTint.color.withAlphaComponent(NoteTint.border.value(in: effectiveAppearance)) : .separatorColor).setStroke()
         path.lineWidth = 1
         path.stroke()
+    }
+}
+
+/// A round button for the pill beside the panel: a faint gray circle, echoing
+/// the pill's rounded ends, that darkens on hover and while pressed.
+final class PillButton: NSButton {
+    private var isHovered = false {
+        didSet { needsDisplay = true }
+    }
+
+    init(target: AnyObject, action: Selector) {
+        super.init(frame: .zero)
+        self.target = target
+        self.action = action
+        isBordered = false
+        imagePosition = .imageOnly
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        // .activeAlways: Seashell is never the active app while the panel is up.
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    /// Buttons keep a few hidden points above and below for a bezel; this one
+    /// has none, so its frame is exactly the size it's given.
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let opacity: CGFloat = isHighlighted ? 0.2 : isHovered ? 0.14 : 0.07
+        NSColor.labelColor.withAlphaComponent(opacity).setFill()
+        let side = min(bounds.width, bounds.height)
+        NSBezierPath(ovalIn: NSRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)).fill()
+        super.draw(dirtyRect)
     }
 }
 
@@ -409,6 +519,7 @@ final class PanelCard: NSView {
 final class SeashellPanel: NSPanel {
     var onEscape: (() -> Void)?
     var onNewNote: (() -> Void)?
+    var onSettings: (() -> Void)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -426,12 +537,16 @@ final class SeashellPanel: NSPanel {
     }
 
     /// A menu bar app has no Edit menu, which is where text views normally get
-    /// ⌘X ⌘C ⌘V ⌘A ⌘Z ⇧⌘Z from; send those to whatever has focus. Plus ⌘N.
+    /// ⌘X ⌘C ⌘V ⌘A ⌘Z ⇧⌘Z from; send those to whatever has focus. Plus ⌘N and ⌘,.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
         let key = event.charactersIgnoringModifiers?.lowercased()
         if modifiers == .command, key == "n", let onNewNote {
             onNewNote()
+            return true
+        }
+        if modifiers == .command, key == ",", let onSettings {
+            onSettings()
             return true
         }
         // Text size: ⌘+ (also ⌘= and ⇧⌘=), ⌘−, ⌘0.

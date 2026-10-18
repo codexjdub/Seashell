@@ -67,15 +67,18 @@ final class StashDropper {
         return true
     }
 
-    /// Moves files in one by one, off the main thread, asking first about big ones.
+    /// Moves files in one by one, off the main thread, asking first about ones
+    /// over the limit in Settings.
     private func stash(_ files: [URL], into shelf: URL, rememberOrigin: Bool) async {
         let mover = self.mover
         for file in files {
-            let size = await Task.detached { (try? FileSize.of(file)) ?? 0 }.value
-            if size > FileSize.confirmationThreshold, !confirmLarge(file, size: size) {
-                Log.info("Skipped \(file.lastPathComponent) (\(size) bytes): declined")
-                if !rememberOrigin { try? FileManager.default.removeItem(at: file) }
-                continue
+            if let limit = AppSettings.shared.largeFileLimit.bytes {
+                let size = await Task.detached { (try? FileSize.of(file)) ?? 0 }.value
+                if size > limit, !confirmLarge(file, size: size) {
+                    Log.info("Skipped \(file.lastPathComponent) (\(size) bytes): declined")
+                    if !rememberOrigin { try? FileManager.default.removeItem(at: file) }
+                    continue
+                }
             }
             do {
                 _ = try await Task.detached { try mover.stash(file, into: shelf, rememberOrigin: rememberOrigin) }.value

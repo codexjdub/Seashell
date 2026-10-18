@@ -67,6 +67,15 @@ struct PanelGeometryTests {
         #expect(huge.minY == visible.minY + 16)
     }
 
+    @Test func leavesRoomForThePillOnNarrowScreens() {
+        let visible = CGRect(x: 0, y: 0, width: 1000, height: 900)
+        let frame = PanelGeometry.frame(in: visible, sideSpace: 40)
+        #expect(frame.width == CGFloat(1000 - 2 * (16 + 40)))
+        #expect(frame.midX == visible.midX)
+        let wider = PanelGeometry.resized(frame, by: CGSize(width: 500, height: 0), scale: 1, in: visible, sideSpace: 40)
+        #expect(wider.width == frame.width)
+    }
+
     @Test func splitMovesAndStaysInRange() {
         #expect(PanelGeometry.split(0.55, movedBy: 100, across: 1000) == 0.65)
         #expect(PanelGeometry.split(0.55, movedBy: -1000, across: 1000) == PanelGeometry.splitRange.lowerBound)

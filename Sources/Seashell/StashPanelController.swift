@@ -22,6 +22,7 @@ final class StashPanelController: NSViewController {
     private let emptyLabel = PassThroughLabel(labelWithString: "Drop files here, or shake while dragging.")
     private var currentShelfName = SeashellFolders.defaultShelfName
     private var items: [StashItem] = []
+    private var headerHeight: NSLayoutConstraint?
     /// The items in the current drag out of the grid. Text and links go on the
     /// pasteboard as content, not file URLs, so moving to a tab needs these.
     private var draggedURLs: [URL] = []
@@ -86,8 +87,12 @@ final class StashPanelController: NSViewController {
             subview.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(subview)
         }
+        // The same height as Notes' header, so both sit on one center line.
+        let headerHeight = header.heightAnchor.constraint(equalToConstant: 28)
+        self.headerHeight = headerHeight
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
+            headerHeight,
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             header.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -16),
             scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
@@ -106,6 +111,7 @@ final class StashPanelController: NSViewController {
     private func applyTextSize() {
         _ = TextSizeSetting.shared.size
         emptyLabel.font = UIScale.font(14)
+        headerHeight?.constant = UIScale.pt(28)
         tabButtons.forEach { $0.font = UIScale.font(13) }
         layout.itemSize = StashItemCell.tileSize
         layout.invalidateLayout()

@@ -1,9 +1,6 @@
 import Foundation
 
 public enum FileSize {
-    /// Stashing anything bigger asks first: everything in Stash uploads to iCloud.
-    public static let confirmationThreshold: Int64 = 1_000_000_000
-
     /// Logical size of a file, or of everything inside a folder or package.
     public static func of(_ url: URL) throws -> Int64 {
         try measure(url).bytes

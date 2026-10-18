@@ -117,8 +117,7 @@ final class NotesPanelController: NSViewController {
             header.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
             headerHeight,
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
-            // Room on the right for the panel's pin and close buttons.
-            header.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -84),
+            header.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -12),
             listScroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
             listScroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
             listScroll.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12),
@@ -499,7 +498,7 @@ final class NoteRowView: NSTableCellView {
 final class NoteSelectionRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 1), xRadius: 5, yRadius: 5)
-        NoteTint.color.withAlphaComponent(NoteTint.selection).setFill()
+        NoteTint.color.withAlphaComponent(NoteTint.selection.value(in: effectiveAppearance)).setFill()
         path.fill()
     }
 

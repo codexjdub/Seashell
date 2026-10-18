@@ -18,15 +18,24 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 - Resizable: drag the bottom edge for height, either side edge for width (it stays centered); remembered per display, measured at Small so it still scales with text. Minimum 640 × 220 at Small. Drag the gap between the cards to change the Stash / Notes split (30–75%), remembered.
 - Opens by pulling down at the top screen edge (two fingers down ~40 pt, or 2 wheel clicks toward you, whatever the natural-scrolling setting), from the menu bar item, or by holding a drag at the top edge for half a second (not within 100 pt of the corners, where hot corners live).
 - Closes on a click outside it, Esc, pushing up at the top edge, or the menu bar item. A press outside that turns into dragging a file or text keeps it open, so you can drag things into it.
-- A pin button (top right) stops clicks elsewhere from closing it; Esc, pushing up and the menu item still do. The pin is remembered until you unpin it, across closes and launches.
+- Pin and close sit in a small pill just outside the panel's top right corner, since they act on the whole panel, not on Notes. The window keeps the same empty room on the left so the panel stays centered; clicks in that see-through room go to whatever is underneath. The buttons are round, with a faint gray fill that darkens on hover and press, echoing the pill's rounded ends. The pill scales with the text size.
+- The pin stops clicks elsewhere from closing it; Esc, pushing up and the menu item still do. The pin is remembered until you unpin it, across closes and launches.
 - Takes keys (Esc, ⌘⌫, Space) without taking focus from the app you're in.
 - Dropping an item from the panel into another app brings that app to the front, so typing goes where the item landed, and closes the panel unless it's pinned.
 - Space previews the selected item in Seashell's own preview window below the panel (a Quick Look view, not the system Quick Look window, which misbehaves for an app that's never active). Space or Esc closes it; arrows move through items and the preview follows.
-- A close button (top right, next to the pin) closes the panel, pinned or not.
-- Stash (55%) and Notes each sit on their own rounded, lightly tinted card with a small gap. The Notes card and Stash's note cards share one faint yellow wash (6%, border 22%), and the selected note is a little stronger (16%); all follow light and dark mode. The Clipboard becomes a third card with Milestone 4 (on hold).
+- The close button closes the panel, pinned or not.
+- The Stash tabs and the Notes header share one height, so tabs, +, Notes and the pencil sit on one center line.
+- Stash (55%) and Notes each sit on their own rounded, lightly tinted card with a small gap. The Notes card and Stash's note cards share one faint yellow wash, and the selected note is a little stronger. Dark Mode: 6% (border 22%, selected 16%). Light Mode needs a little more to show: 10% (border 30%, selected 22%). The Clipboard becomes a third card with Milestone 4 (on hold).
 - Notes: a list (most recently edited first) beside a plain-text editor; Markdown is kept exactly as typed. The first line is the title, and the file is renamed to match when you leave the note (switch notes, close the panel, quit). Saves 1 s after you stop typing. ⌘N or the pencil adds a selected "New Note" row with the cursor in the editor; it gets a file once you type, and left empty it just disappears. An existing note left empty goes to the Trash. Rows show live titles as you type. Drag a note out as its text (plus a `.md` for Finder); drop text onto the list to start a note.
 - If a note changed on disk since Seashell read it (another Mac, another app), saving writes `Title (edited here).md` instead of overwriting. With no pending edits, the editor just shows the new version.
-- Text size: Small (the original), Medium (default, +15%), Large (+30%), Extra Large (+50%). Set from the menu bar menu (Text Size) or with ⌘+ / ⌘− / ⌘0 in the panel; remembered on this Mac. It scales all of Seashell's text, and tiles, cards, rows, the floating shelf and the panel grow with it (as far as the screen allows). macOS's own menus and alerts follow the system.
+- Text size: Small (the original), Medium (default, +15%), Large (+30%), Extra Large (+50%). Set in Settings or with ⌘+ / ⌘− / ⌘0 in the panel; remembered on this Mac. It scales all of Seashell's text, and tiles, cards, rows, the floating shelf and the panel grow with it (as far as the screen allows). macOS's own menus and alerts follow the system.
+- Settings window: "Settings…" (⌘,) in the menu bar menu, or ⌘, in the panel. Esc or ⌘W closes it. It sits above the panel and hides when you switch to another app.
+  - Theme: System (default), Light or Dark for Seashell's own windows (panel, floating shelf, preview, Settings, alerts). The menu bar icon follows the menu bar.
+  - Text size: the same four steps as ⌘+ / ⌘− / ⌘0 in the panel, with that tip underneath.
+  - Open Seashell when you log in: off until turned on; macOS tracks it (`SMAppService`) and lists it in Login Items. If macOS wants approval, Seashell opens Login Items and says so.
+  - Ask before stashing: Over 500 MB, Over 1 GB (default), Over 5 GB, or Never.
+  - Shake to show the shelf: Off, Gentle (2 swings of 15 pt), Normal (3 of 20 pt in 0.6 s, the default), Firm (4 of 30 pt in 0.8 s).
+  - Pull down at the top edge to open the panel: on by default. Pushing up still closes it, and holding a drag at the top edge still opens it.
 - Edit shortcuts (⌘X ⌘C ⌘V ⌘A ⌘Z ⇧⌘Z) are wired up by hand: a menu bar app has no Edit menu. In the editor they use the system clipboard as usual.
 - Dropping onto the menu bar icon stashes into `Main`.
 
@@ -52,7 +61,7 @@ Rules:
 - To take a file out of Stash for good: drag it out (a copy lands), then right-click → Delete.
 - In the panel, text shows as a note card (two tiles wide) with its first lines and a link as a card with its title and site; hovering shows the full text or address. Files and folders show thumbnails.
 - Text (`.txt` up to 1 MB) and links (`.webloc`) drag out as their content — the words or the address — so they drop into text fields and browsers. Finder still gets the file: it's a file promise that Seashell writes on drop.
-- Any file or folder over 1 GB going into Stash asks first — everything in Stash uploads to iCloud and counts against its storage.
+- Any file or folder over the limit in Settings (1 GB by default) going into Stash asks first — everything in Stash uploads to iCloud and counts against its storage.
 - Moving into Stash from another volume is copy → verify → delete the original, like Finder.
 - Stashed text is named by its first few words (`Recently, I lived for a few.txt`, at most 6 words and 40 characters), or `Snippet 2026-10-17 0942.txt` when there are none.
 - Name clash in Stash: the newcomer becomes `report 2.pdf`, like Finder.
@@ -88,10 +97,9 @@ Rules:
 
 ~/Library/Application Support/Seashell/   ← this Mac only
 ├── clipboard.json                    ← Copy/Cut items: security bookmarks + text
-├── Held/                             ← local copies of promised files, links and image data in Copy/Cut
-└── settings.json                     ← larger settings (Milestone 7)
+└── Held/                             ← local copies of promised files, links and image data in Copy/Cut
 
-Small per-Mac preferences such as the panel's pin live in UserDefaults.
+Per-Mac preferences live in UserDefaults: the panel's pin, sizes and split, and every choice in Settings except launch at login, which macOS keeps.
 
 ~/Library/Logs/Seashell/Seashell.log      ← readable log for testing
 ```
@@ -124,7 +132,7 @@ Sources/
     ShakeDetector       global drag monitor + drag pasteboard → shake detection
     FloatingShelf       three-zone drop panel near the cursor
     DragOut             NSDraggingSource per area (operation masks below)
-    SettingsWindow      launch at login (SMAppService), 1 GB limit, shake sensitivity
+    SettingsWindow      theme, text size, launch at login (SMAppService), large-file limit, shake sensitivity, pull down
     Views/              SwiftUI: StashView, ClipboardView, NotesView
 Tests/SeashellCoreTests
 scripts/bundle.sh       swift build → Seashell.app (Info.plist, icon) → codesign "codexjdub"

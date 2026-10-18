@@ -4,7 +4,7 @@ import SeashellCore
 /// Watches mouse drags in every app, while something is actually being dragged
 /// (dragging a window or selecting text leaves the drag pasteboard alone), and
 /// reports, at most once per drag each:
-/// - a shake of the pointer (`onShake`), and
+/// - a shake of the pointer (`onShake`), unless shaking is off in Settings, and
 /// - the pointer held at the top edge, away from the corners, for half a second
 ///   (`onHoldAtTopEdge`).
 @MainActor
@@ -14,13 +14,18 @@ final class DragWatcher {
 
     private static let holdDelay: Duration = .milliseconds(500)
 
-    private var detector = ShakeDetector()
+    /// Nil when shaking is off.
+    private var detector = ShakeSensitivity.standard.detector
     private let dragPasteboard = NSPasteboard(name: .drag)
     private var changeCountAtPress = 0
     private var shookThisDrag = false
     private var heldThisDrag = false
     private var holdTask: Task<Void, Never>?
     private var monitors: [Any] = []
+
+    func setShakeSensitivity(_ sensitivity: ShakeSensitivity) {
+        detector = sensitivity.detector
+    }
 
     func start() {
         let events: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged]
@@ -46,12 +51,12 @@ final class DragWatcher {
             shookThisDrag = false
             heldThisDrag = false
             cancelHold()
-            detector.reset()
+            detector?.reset()
         case .leftMouseDragged:
             guard dragPasteboard.changeCount != changeCountAtPress else { return }
             let point = NSEvent.mouseLocation
             watchForHold(at: point)
-            if !shookThisDrag, detector.add(x: point.x, at: event.timestamp) {
+            if !shookThisDrag, detector?.add(x: point.x, at: event.timestamp) == true {
                 shookThisDrag = true
                 onShake?(point)
             }

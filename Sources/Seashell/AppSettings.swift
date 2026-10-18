@@ -1,0 +1,97 @@
+import AppKit
+import Observation
+import ServiceManagement
+import SeashellCore
+
+/// The choices in the Settings window, remembered on this Mac. Views and
+/// watchers read them inside `observeChanges`, so changes apply at once.
+/// Text size lives in `TextSizeSetting`, launch at login in `LoginItem`.
+@MainActor @Observable
+final class AppSettings {
+    static let shared = AppSettings()
+
+    private enum Key {
+        static let theme = "theme"
+        static let largeFileLimit = "largeFileLimit"
+        static let shakeSensitivity = "shakeSensitivity"
+        static let opensOnPullDown = "opensOnPullDown"
+    }
+
+    var theme: Theme {
+        didSet {
+            UserDefaults.standard.set(theme.rawValue, forKey: Key.theme)
+            Log.info("Theme: \(theme.name)")
+        }
+    }
+
+    /// Asks before stashing anything bigger.
+    var largeFileLimit: LargeFileLimit {
+        didSet {
+            UserDefaults.standard.set(largeFileLimit.rawValue, forKey: Key.largeFileLimit)
+            Log.info("Ask before stashing: \(largeFileLimit.name)")
+        }
+    }
+
+    var shakeSensitivity: ShakeSensitivity {
+        didSet {
+            UserDefaults.standard.set(shakeSensitivity.rawValue, forKey: Key.shakeSensitivity)
+            Log.info("Shake to show the shelf: \(shakeSensitivity.name)")
+        }
+    }
+
+    /// Pulling down at the top edge opens the panel. Pushing up still closes it.
+    var opensOnPullDown: Bool {
+        didSet {
+            UserDefaults.standard.set(opensOnPullDown, forKey: Key.opensOnPullDown)
+            Log.info(opensOnPullDown ? "Pull down at the top edge: on" : "Pull down at the top edge: off")
+        }
+    }
+
+    private init() {
+        theme = Self.load(Key.theme) ?? .standard
+        largeFileLimit = Self.load(Key.largeFileLimit) ?? .standard
+        shakeSensitivity = Self.load(Key.shakeSensitivity) ?? .standard
+        opensOnPullDown = UserDefaults.standard.object(forKey: Key.opensOnPullDown) as? Bool ?? true
+    }
+
+    private static func load<Value: RawRepresentable>(_ key: String) -> Value? where Value.RawValue == String {
+        guard let raw = UserDefaults.standard.string(forKey: key) else { return nil }
+        return Value(rawValue: raw)
+    }
+}
+
+extension Theme {
+    /// Nil follows the Mac.
+    var appearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
+/// Opening Seashell when you log in. macOS keeps track of it (and lists it in
+/// System Settings → General → Login Items), so nothing is stored here.
+@MainActor
+enum LoginItem {
+    static var isOn: Bool { SMAppService.mainApp.status == .enabled }
+
+    /// Turned on, but waiting for you to allow it in System Settings.
+    static var needsApproval: Bool { SMAppService.mainApp.status == .requiresApproval }
+
+    static func set(_ on: Bool) throws {
+        if on {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
+        }
+        Log.info("Launch at login: \(on ? "on" : "off") (status \(SMAppService.mainApp.status.rawValue))")
+    }
+
+    /// System Settings → General → Login Items, where you allow it.
+    static func openSystemSettings() {
+        Log.info("Opening Login Items in System Settings to allow Seashell")
+        SMAppService.openSystemSettingsLoginItems()
+    }
+}

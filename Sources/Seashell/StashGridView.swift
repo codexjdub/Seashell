@@ -239,24 +239,44 @@ final class StashItemCell: NSCollectionViewItem {
 }
 
 /// The faint yellow notes are drawn in, alike on Stash's note cards and the
-/// Notes card. Opacities of `color`, washed over the card underneath.
+/// Notes card. Opacities of `color`, washed over the card underneath; Light
+/// Mode needs a little more to show.
 @MainActor
 enum NoteTint {
     static let color = NSColor.systemYellow
-    static let fill: CGFloat = 0.06
-    static let border: CGFloat = 0.22
+    static let fill = Opacity(light: 0.10, dark: 0.06)
+    static let border = Opacity(light: 0.30, dark: 0.22)
     /// The selected note in the Notes list.
-    static let selection: CGFloat = 0.16
+    static let selection = Opacity(light: 0.22, dark: 0.16)
+}
+
+/// An opacity that can differ between Light and Dark Mode.
+struct Opacity {
+    let light: CGFloat
+    let dark: CGFloat
+
+    init(light: CGFloat, dark: CGFloat) {
+        self.light = light
+        self.dark = dark
+    }
+
+    init(_ both: CGFloat) {
+        self.init(light: both, dark: both)
+    }
+
+    func value(in appearance: NSAppearance) -> CGFloat {
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+    }
 }
 
 /// A rounded, tinted card. Drawn rather than layer-styled, so it can be
 /// captured for a drag image and follows light and dark mode.
 final class CardView: NSView {
     private let color: NSColor
-    private let fill: CGFloat
-    private let border: CGFloat
+    private let fill: Opacity
+    private let border: Opacity
 
-    init(color: NSColor, fill: CGFloat = 0.18, border: CGFloat = 0.45) {
+    init(color: NSColor, fill: Opacity = Opacity(0.18), border: Opacity = Opacity(0.45)) {
         self.color = color
         self.fill = fill
         self.border = border
@@ -270,9 +290,9 @@ final class CardView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
-        color.withAlphaComponent(fill).setFill()
+        color.withAlphaComponent(fill.value(in: effectiveAppearance)).setFill()
         path.fill()
-        color.withAlphaComponent(border).setStroke()
+        color.withAlphaComponent(border.value(in: effectiveAppearance)).setStroke()
         path.lineWidth = 1
         path.stroke()
     }

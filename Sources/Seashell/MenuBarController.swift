@@ -8,12 +8,14 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
     private let store: StashStore
     private let dropper: StashDropper
     private let panel: PanelController
+    private let settings: SettingsWindow
     private let menu = NSMenu()
 
-    init(store: StashStore, dropper: StashDropper, panel: PanelController) {
+    init(store: StashStore, dropper: StashDropper, panel: PanelController, settings: SettingsWindow) {
         self.store = store
         self.dropper = dropper
         self.panel = panel
+        self.settings = settings
         super.init()
         statusItem.button?.image = NSImage(systemSymbolName: "tray.full", accessibilityDescription: "Seashell")
         menu.delegate = self
@@ -53,29 +55,15 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         let toggle = NSMenuItem(title: panel.isShowing ? "Close Seashell" : "Open Seashell", action: #selector(togglePanel), keyEquivalent: "")
         toggle.target = self
         menu.addItem(toggle)
-
-        let sizes = NSMenu()
-        for size in TextSize.allCases {
-            let item = NSMenuItem(title: size.name, action: #selector(chooseTextSize), keyEquivalent: "")
-            item.target = self
-            item.representedObject = size.rawValue
-            item.state = size == TextSizeSetting.shared.size ? .on : .off
-            sizes.addItem(item)
-        }
-        sizes.addItem(.separator())
-        let hint = NSMenuItem(title: "In the panel: ⌘+ bigger, ⌘− smaller, ⌘0 Medium", action: nil, keyEquivalent: "")
-        hint.isEnabled = false
-        sizes.addItem(hint)
-        let sizeItem = NSMenuItem(title: "Text Size", action: nil, keyEquivalent: "")
-        sizeItem.submenu = sizes
-        menu.addItem(sizeItem)
         menu.addItem(.separator())
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
         menu.addItem(NSMenuItem(title: "Quit Seashell", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
-    @objc private func chooseTextSize(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let size = TextSize(rawValue: raw) else { return }
-        TextSizeSetting.shared.size = size
+    @objc private func openSettings() {
+        settings.show()
     }
 
     @objc private func togglePanel() {

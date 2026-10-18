@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notesStore: NotesStore?
     private let dragWatcher = DragWatcher()
     private let edgeScrollWatcher = EdgeScrollWatcher()
+    private let settingsWindow = SettingsWindow()
     private var isSecondCopy = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -20,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         Log.info("Seashell \(version) launched from \(Bundle.main.bundlePath)")
+
+        let settings = AppSettings.shared
+        observeChanges { NSApp.appearance = AppSettings.shared.theme.appearance }
 
         let folders = SeashellFolders.standard
         prepare(folders)
@@ -43,17 +47,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.notesStore = notesStore
         let panel = PanelController(store: store, notesStore: notesStore, mover: mover, dropper: dropper)
         self.panel = panel
-        menuBar = MenuBarController(store: store, dropper: dropper, panel: panel)
+        menuBar = MenuBarController(store: store, dropper: dropper, panel: panel, settings: settingsWindow)
+        panel.openSettings = { [settingsWindow] in settingsWindow.show() }
         panel.ignoresClick = { [weak self] point in self?.menuBar?.isOnIcon(point) ?? false }
         let floatingShelf = FloatingShelf(store: store, dropper: dropper)
         self.floatingShelf = floatingShelf
 
         dragWatcher.onShake = { floatingShelf.show(at: $0) }
+        observeChanges { [dragWatcher] in dragWatcher.setShakeSensitivity(AppSettings.shared.shakeSensitivity) }
         dragWatcher.onHoldAtTopEdge = { panel.open(on: NSScreen.containing($0), reason: "drag held at top edge") }
         dragWatcher.start()
         edgeScrollWatcher.onGesture = { gesture, screen in
             switch gesture {
-            case .pullDown: panel.open(on: screen, reason: "pull down at top edge")
+            case .pullDown:
+                guard settings.opensOnPullDown else { return }
+                panel.open(on: screen, reason: "pull down at top edge")
             case .pushUp: panel.close(reason: "push up at top edge")
             }
         }
