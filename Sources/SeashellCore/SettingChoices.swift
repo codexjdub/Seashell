@@ -77,3 +77,39 @@ public enum ShakeSensitivity: String, CaseIterable, Sendable {
         return detector
     }
 }
+
+/// The keyboard shortcut that opens and closes the panel from any app.
+public enum PanelShortcut: String, CaseIterable, Sendable {
+    case controlOptionS, controlOptionCommandS, controlOptionZ, off
+
+    public static let standard = PanelShortcut.controlOptionS
+
+    public var name: String {
+        switch self {
+        case .controlOptionS: "⌃⌥S"
+        case .controlOptionCommandS: "⌃⌥⌘S"
+        case .controlOptionZ: "⌃⌥Z"
+        case .off: "Off"
+        }
+    }
+
+    /// The key (a `kVK_ANSI_*` code) and Carbon modifier flags; nil when off.
+    public var key: (code: UInt32, modifiers: UInt32)? {
+        let control: UInt32 = 0x1000, option: UInt32 = 0x0800, command: UInt32 = 0x0100  // controlKey, optionKey, cmdKey
+        switch self {
+        case .controlOptionS: return (1, control | option)  // kVK_ANSI_S
+        case .controlOptionCommandS: return (1, control | option | command)
+        case .controlOptionZ: return (6, control | option)  // kVK_ANSI_Z
+        case .off: return nil
+        }
+    }
+
+    /// The letter, for showing the shortcut in a menu.
+    public var letter: String? {
+        switch self {
+        case .controlOptionS, .controlOptionCommandS: "s"
+        case .controlOptionZ: "z"
+        case .off: nil
+        }
+    }
+}

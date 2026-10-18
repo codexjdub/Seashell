@@ -115,6 +115,39 @@ struct FileMoverTests {
         #expect(ShelfManifest.read(in: shelf) == ShelfManifest())
     }
 
+    @Test func pastingCopiesAndLeavesTheOriginal() throws {
+        let original = try folder.file("Downloads/report.pdf", "PDF")
+        _ = try folder.file("Stash/Main/report.pdf", "older")
+        let copy = try folder.mover().stashCopy(original, into: shelf)
+
+        #expect(exists(original), "the original stays where it was")
+        #expect(copy.lastPathComponent == "report 2.pdf")
+        #expect(try text(copy) == "PDF")
+        #expect(ShelfManifest.read(in: shelf).origins[copy.lastPathComponent] == nil, "nothing to put back")
+    }
+
+    @Test func renameKeepsPlaceAndOrigin() throws {
+        let mover = try folder.mover()
+        let first = try mover.stash(try folder.file("Downloads/a.txt", "A"), into: shelf)
+        _ = try mover.stash(try folder.file("Downloads/b.txt", "B"), into: shelf)
+
+        let renamed = try mover.rename(first, to: "Alpha.txt")
+        #expect(renamed.lastPathComponent == "Alpha.txt")
+        #expect(!exists(first))
+        let manifest = ShelfManifest.read(in: shelf)
+        #expect(manifest.order == ["b.txt", "Alpha.txt"])
+        #expect(manifest.origins["Alpha.txt"] == source.path(percentEncoded: false))
+    }
+
+    @Test func renameRefusesTakenAndBadNames() throws {
+        let mover = try folder.mover()
+        let a = try mover.stash(try folder.file("Downloads/a.txt"), into: shelf)
+        _ = try mover.stash(try folder.file("Downloads/b.txt"), into: shelf)
+        #expect(throws: FileMoverError.nameTaken("b.txt")) { try mover.rename(a, to: "b.txt") }
+        #expect(throws: FileMoverError.invalidName("")) { try mover.rename(a, to: "") }
+        #expect(try mover.rename(a, to: "A.txt").lastPathComponent == "A.txt", "a change of case alone is fine")
+    }
+
     @Test func putBackReturnsToOrigin() throws {
         let mover = try folder.mover()
         let original = try folder.file("Downloads/report.pdf", "PDF")

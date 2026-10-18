@@ -55,6 +55,12 @@ public struct ShelfManifest: Codable, Equatable, Sendable {
         origins[name] = origin
     }
 
+    /// Same place in the order, same origin, new name.
+    mutating func rename(_ name: String, to newName: String) {
+        if let index = order.firstIndex(of: name) { order[index] = newName }
+        if let origin = origins.removeValue(forKey: name) { origins[newName] = origin }
+    }
+
     mutating func remove(_ name: String) {
         order.removeAll { $0 == name }
         origins[name] = nil

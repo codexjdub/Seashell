@@ -16,6 +16,7 @@ final class SettingsWindow: NSObject {
     private let shakePopup = NSPopUpButton()
     private let pullDownCheckbox = NSButton(checkboxWithTitle: "Pull down at the top edge to open the panel", target: nil, action: nil)
     private let ignoredApps = IgnoredAppsView()
+    private let shortcutPopup = NSPopUpButton()
 
     func show() {
         let isNew = !window.isVisible
@@ -48,6 +49,11 @@ final class SettingsWindow: NSObject {
         AppSettings.shared.shakeSensitivity = sensitivity
     }
 
+    @objc private func shortcutChosen(_ sender: NSPopUpButton) {
+        guard let shortcut = Self.chosen(PanelShortcut.self, in: sender) else { return }
+        AppSettings.shared.panelShortcut = shortcut
+    }
+
     @objc private func pullDownToggled(_ sender: NSButton) {
         AppSettings.shared.opensOnPullDown = sender.state == .on
     }
@@ -72,6 +78,7 @@ final class SettingsWindow: NSObject {
         Self.select(TextSizeSetting.shared.size, in: textSizePopup)
         Self.select(settings.largeFileLimit, in: largeFilePopup)
         Self.select(settings.shakeSensitivity, in: shakePopup)
+        Self.select(settings.panelShortcut, in: shortcutPopup)
         pullDownCheckbox.state = settings.opensOnPullDown ? .on : .off
         ignoredApps.show(settings.shakeIgnoredApps)
     }
@@ -100,6 +107,7 @@ final class SettingsWindow: NSObject {
         Self.fill(textSizePopup, with: TextSize.allCases, name: \.name, target: self, action: #selector(textSizeChosen))
         Self.fill(largeFilePopup, with: LargeFileLimit.allCases, name: \.name, target: self, action: #selector(largeFileLimitChosen))
         Self.fill(shakePopup, with: ShakeSensitivity.allCases, name: \.name, target: self, action: #selector(shakeChosen))
+        Self.fill(shortcutPopup, with: PanelShortcut.allCases, name: \.name, target: self, action: #selector(shortcutChosen))
         for (checkbox, action) in [(loginCheckbox, #selector(loginToggled)), (pullDownCheckbox, #selector(pullDownToggled))] {
             checkbox.target = self
             checkbox.action = action
@@ -118,13 +126,15 @@ final class SettingsWindow: NSObject {
             [empty, Self.note("Shake while dragging something to drop it; ⌥-shake to grab from Stash.")],
             [Self.label("Ignore shakes in:"), ignoredApps],
             [Self.label("Top edge:"), pullDownCheckbox],
+            [Self.label("Keyboard shortcut:"), shortcutPopup],
+            [empty, Self.note("Opens and closes the panel from any app.")],
         ])
         grid.rowSpacing = 8
         grid.columnSpacing = 8
         grid.rowAlignment = .firstBaseline
         grid.column(at: 0).xPlacement = .trailing
         // A little more room above each group.
-        for row in [3, 5, 7, 10] { grid.row(at: row).topPadding = 8 }
+        for row in [3, 5, 7, 10, 11] { grid.row(at: row).topPadding = 8 }
         // The list has no baseline: line its label up with the top of the list.
         grid.row(at: 9).rowAlignment = .none
         grid.row(at: 9).yPlacement = .top

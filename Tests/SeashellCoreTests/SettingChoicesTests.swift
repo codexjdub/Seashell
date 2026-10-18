@@ -9,6 +9,14 @@ struct SettingChoicesTests {
         #expect(ShakeSensitivity.standard == .normal)
     }
 
+    @Test func panelShortcuts() {
+        #expect(PanelShortcut.standard == .controlOptionS)
+        #expect(PanelShortcut.off.key == nil)
+        #expect(PanelShortcut.controlOptionS.key?.code == 1)
+        #expect(PanelShortcut.controlOptionCommandS.key?.modifiers == UInt32(0x1000 | 0x0800 | 0x0100))
+        #expect(PanelShortcut.allCases.map(\.name) == ["⌃⌥S", "⌃⌥⌘S", "⌃⌥Z", "Off"])
+    }
+
     @Test func largeFileLimits() {
         #expect(LargeFileLimit.allCases.map(\.bytes) == [500_000_000, 1_000_000_000, 5_000_000_000, nil])
     }

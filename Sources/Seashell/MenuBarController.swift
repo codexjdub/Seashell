@@ -54,6 +54,12 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         menu.addItem(.separator())
         let toggle = NSMenuItem(title: panel.isShowing ? "Close Seashell" : "Open Seashell", action: #selector(togglePanel), keyEquivalent: "")
         toggle.target = self
+        // Shows the keyboard shortcut from Settings beside it.
+        let shortcut = AppSettings.shared.panelShortcut
+        if let letter = shortcut.letter {
+            toggle.keyEquivalent = letter
+            toggle.keyEquivalentModifierMask = shortcut == .controlOptionCommandS ? [.control, .option, .command] : [.control, .option]
+        }
         menu.addItem(toggle)
         // For the app you're in (opening this menu leaves it in front).
         if let app = NSWorkspace.shared.frontmostApplication, app != .current, let id = app.bundleIdentifier {

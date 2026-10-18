@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let optionShakeWatcher = OptionShakeWatcher()
     private var grabShelf: GrabShelf?
     private var tearOffs: TearOffShelves?
+    private let panelHotKey = HotKey(id: 1)
     private let settingsWindow = SettingsWindow()
     private var isSecondCopy = false
 
@@ -74,6 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tearOffs.onSettings = { [settingsWindow] in settingsWindow.show() }
         panel.onTearOff = { shelf, point in tearOffs.open(shelf, at: point) }
         panel.onShelfRenamed = { old, new in tearOffs.rename(from: old, to: new) }
+
+        observeChanges { [panelHotKey] in
+            let shortcut = AppSettings.shared.panelShortcut
+            panelHotKey.set(shortcut.key) { panel.toggle(reason: "keyboard shortcut \(shortcut.name)") }
+        }
         tearOffs.restore()
         optionShakeWatcher.onShake = { point in
             guard AppSettings.shared.allowsShake() else { return }

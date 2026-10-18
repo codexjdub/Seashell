@@ -6,6 +6,8 @@ public enum FileMoverError: LocalizedError, Equatable {
     case noOrigin(String)
     case originMissing(String)
     case unreadableImage
+    case invalidName(String)
+    case nameTaken(String)
 
     public var errorDescription: String? {
         switch self {
@@ -14,6 +16,8 @@ public enum FileMoverError: LocalizedError, Equatable {
         case .noOrigin(let name): "Seashell doesn’t know where “\(name)” came from."
         case .originMissing(let path): "The folder it came from no longer exists: \(path)"
         case .unreadableImage: "The image couldn’t be read."
+        case .invalidName(let name): "“\(name)” can’t be used as a name."
+        case .nameTaken(let name): "There’s already an item called “\(name)” on this shelf."
         }
     }
 }
@@ -55,6 +59,18 @@ public struct FileMover: Sendable {
         return destination
     }
 
+    /// Copies a file or folder into `shelf`, leaving the original where it is:
+    /// what pasting does. No Put Back, since the original never left.
+    @discardableResult
+    public func stashCopy(_ source: URL, into shelf: URL) throws -> URL {
+        guard exists(source) else { throw FileMoverError.missing(source.lastPathComponent) }
+        let destination = FileNaming.uniqueDestination(for: source.lastPathComponent, in: shelf, isDirectory: isDirectory(source))
+        try Coordinated.read(source) { try FileManager.default.copyItem(at: $0, to: destination) }
+        try ShelfManifest.update(in: shelf) { $0.add(destination.lastPathComponent, origin: nil) }
+        Log.info("Copied \(source.lastPathComponent) → \(shelf.lastPathComponent)/\(destination.lastPathComponent)")
+        return destination
+    }
+
     @discardableResult
     public func stash(text: String, into shelf: URL, date: Date = .now) throws -> URL {
         try write(Data(text.utf8), named: FileNaming.snippetName(for: text, date: date), into: shelf)
@@ -83,6 +99,23 @@ public struct FileMover: Sendable {
         try ShelfManifest.update(in: from) { $0.remove(item.lastPathComponent) }
         try ShelfManifest.update(in: shelf) { $0.add(destination.lastPathComponent, origin: origin) }
         Log.info("Moved \(item.lastPathComponent) → \(shelf.lastPathComponent)")
+        return destination
+    }
+
+    /// Renames a stashed item where it is; it keeps its place and Put Back origin.
+    @discardableResult
+    public func rename(_ item: URL, to name: String) throws -> URL {
+        let cleaned = FileNaming.sanitized(name)
+        guard !cleaned.isEmpty, cleaned == name.trimmingCharacters(in: .whitespaces) else { throw FileMoverError.invalidName(name) }
+        let current = item.lastPathComponent
+        guard cleaned != current else { return item }
+        let shelf = item.deletingLastPathComponent()
+        let destination = shelf.appending(path: cleaned, directoryHint: isDirectory(item) ? .isDirectory : .notDirectory)
+        // Another item already has that name (a change of case alone is fine).
+        if exists(destination), cleaned.lowercased() != current.lowercased() { throw FileMoverError.nameTaken(cleaned) }
+        try Coordinated.move(item, to: destination)
+        try ShelfManifest.update(in: shelf) { $0.rename(current, to: cleaned) }
+        Log.info("Renamed \(current) → \(cleaned)")
         return destination
     }
 

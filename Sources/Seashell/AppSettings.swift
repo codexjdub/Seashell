@@ -16,6 +16,7 @@ final class AppSettings {
         static let shakeSensitivity = "shakeSensitivity"
         static let opensOnPullDown = "opensOnPullDown"
         static let shakeIgnoredApps = "shakeIgnoredApps"
+        static let panelShortcut = "panelShortcut"
     }
 
     var theme: Theme {
@@ -48,6 +49,14 @@ final class AppSettings {
         }
     }
 
+    /// Opens and closes the panel from any app.
+    var panelShortcut: PanelShortcut {
+        didSet {
+            UserDefaults.standard.set(panelShortcut.rawValue, forKey: Key.panelShortcut)
+            Log.info("Keyboard shortcut: \(panelShortcut.name)")
+        }
+    }
+
     /// Apps (bundle IDs) in which shakes are ignored, for both the drop shelf and
     /// the grab shelf: drawing apps and games move the pointer fast on purpose.
     var shakeIgnoredApps: [String] {
@@ -77,6 +86,7 @@ final class AppSettings {
         shakeSensitivity = Self.load(Key.shakeSensitivity) ?? .standard
         opensOnPullDown = UserDefaults.standard.object(forKey: Key.opensOnPullDown) as? Bool ?? true
         shakeIgnoredApps = UserDefaults.standard.stringArray(forKey: Key.shakeIgnoredApps) ?? []
+        panelShortcut = Self.load(Key.panelShortcut) ?? .standard
     }
 
     private static func load<Value: RawRepresentable>(_ key: String) -> Value? where Value.RawValue == String {
