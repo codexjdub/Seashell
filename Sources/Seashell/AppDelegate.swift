@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar = MenuBarController(store: store, dropper: dropper, panel: panel, settings: settingsWindow, tips: tipsWindow)
         tipsWindow.onOpenPanel = { panel.open(reason: "tips") }
         panel.openSettings = { [settingsWindow] in settingsWindow.show() }
+        settingsWindow.panelFrame = { panel.shownFrame }
         panel.ignoresClick = { [weak self] point in self?.menuBar?.isOnIcon(point) ?? false }
         let floatingShelf = FloatingShelf(store: store, dropper: dropper)
         self.floatingShelf = floatingShelf

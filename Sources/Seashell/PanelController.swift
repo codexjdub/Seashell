@@ -108,6 +108,9 @@ final class PanelController: NSObject {
         panel.frame.insetBy(dx: sideSpace, dy: 0)
     }
 
+    /// Its frame while it's on screen.
+    var shownFrame: NSRect? { isShowing ? panel.frame : nil }
+
     /// Open and actually on screen. Something else (Mission Control, say) can
     /// hide the panel while Seashell still thinks it's open.
     var isShowing: Bool {

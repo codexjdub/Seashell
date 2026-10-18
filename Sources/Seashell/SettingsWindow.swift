@@ -18,13 +18,32 @@ final class SettingsWindow: NSObject {
     private let ignoredApps = IgnoredAppsView()
     private let shortcutPopup = NSPopUpButton()
 
+    /// The pull-down panel's frame while it's open, so Settings opens below it.
+    var panelFrame: (() -> NSRect?)?
+
     func show() {
         let isNew = !window.isVisible
         refreshLoginItem()
+        if isNew { place() }
         NSApp.activate()
-        if isNew { window.center() }
+        // A non-activating panel: it takes the keyboard even if macOS doesn't
+        // bring Seashell forward (as when opened from the pull-down panel).
         window.makeKeyAndOrderFront(nil)
         Log.info("Settings opened")
+    }
+
+    /// Below the pull-down panel if it's open, so neither covers the other;
+    /// otherwise in the middle of the screen.
+    private func place() {
+        guard let panel = panelFrame?(), let screen = NSScreen.screens.first(where: { $0.frame.intersects(panel) }) else {
+            window.center()
+            return
+        }
+        let size = window.frame.size
+        let visible = screen.visibleFrame
+        let x = min(max(panel.midX - size.width / 2, visible.minX + 16), visible.maxX - size.width - 16)
+        let y = max(panel.minY - 16 - size.height, visible.minY + 16)
+        window.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
     // MARK: Changes
@@ -95,13 +114,7 @@ final class SettingsWindow: NSObject {
     // MARK: Building
 
     private func makeWindow() -> NSWindow {
-        let window = SettingsPanelWindow(contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Seashell Settings"
-        window.isReleasedWhenClosed = false
-        // Above the pull-down panel, which sits just below the menu bar. Hidden
-        // when you switch to another app, so it doesn't float over that app.
-        window.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue - 1)
-        window.hidesOnDeactivate = true
+        let window = SettingsPanelWindow(title: "Seashell Settings")
 
         Self.fill(themePopup, with: Theme.allCases, name: \.name, target: self, action: #selector(themeChosen))
         Self.fill(textSizePopup, with: TextSize.allCases, name: \.name, target: self, action: #selector(textSizeChosen))
@@ -190,7 +203,21 @@ final class SettingsWindow: NSObject {
 }
 
 /// A menu bar app has no menu with ⌘W, so the window handles it, and Esc too.
-final class SettingsPanelWindow: NSWindow {
+/// Settings and Tips: an ordinary titled window that, like the pull-down panel,
+/// takes the keyboard without making Seashell the active app. Other apps'
+/// windows go over it as usual.
+final class SettingsPanelWindow: NSPanel {
+    init(title: String) {
+        super.init(contentRect: .zero, styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
+        self.title = title
+        isReleasedWhenClosed = false
+        level = .normal
+        isFloatingPanel = false
+        hidesOnDeactivate = false
+    }
+
+    override var canBecomeKey: Bool { true }
+
     override func cancelOperation(_ sender: Any?) {
         performClose(nil)
     }

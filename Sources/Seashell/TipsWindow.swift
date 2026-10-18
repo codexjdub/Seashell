@@ -57,12 +57,7 @@ final class TipsWindow: NSObject {
     }
 
     private func makeWindow() -> NSWindow {
-        let window = SettingsPanelWindow(contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Welcome to Seashell"
-        window.isReleasedWhenClosed = false
-        // Above the pull-down panel, like Settings.
-        window.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue - 1)
-        window.hidesOnDeactivate = true
+        let window = SettingsPanelWindow(title: "Welcome to Seashell")
 
         let icon = NSImageView(image: NSApp.applicationIconImage)
         icon.translatesAutoresizingMaskIntoConstraints = false
