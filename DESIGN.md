@@ -43,6 +43,8 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 
 Shaking the cursor during a drag pops a **floating shelf** near the cursor with one drop zone per shelf, in the panel's tab order (Main first), so you drop straight into the shelf you want. 5 shelves show at a time; past that, holding the drag over **More…** for 0.4 s shows the next 5 in the same spot (the shelf keeps its size, so More… stays under the pointer), and on the last page it reads **Back to Main…** and starts over. Move off More… and back to flip again. Copy and Cut zones would join it with the Clipboard (on hold). It hides about a second after the mouse is released, whether or not you dropped on it, and never deletes anything.
 
+**Grab shelf**: shake the pointer with ⌥ held and no button down, and a shelf pops up above the pointer with the 8 most recently added items from every shelf, newest first, as the same tiles as the panel. Drag one out and a copy lands where you drop it (the item stays in Stash), and that app comes forward. It goes away after a drop, a click elsewhere, a second ⌥-shake, or when the pointer moves more than 220 pt away (not in the first second, so the end of the shake doesn't count); More… opens the full panel. ⌥ keeps it from firing when you shake the pointer just to find it (macOS enlarges the pointer on a plain shake, and still does with ⌥). It follows the shake sensitivity in Settings; Off turns it off too.
+
 ## Behaviour
 
 | | **Stash** | **Copy** (⌘C) | **Cut** (⌘X) |

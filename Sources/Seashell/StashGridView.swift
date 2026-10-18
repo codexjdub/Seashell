@@ -14,6 +14,9 @@ final class StashGridView: NSCollectionView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    /// The grab shelf is never the key window: the first click must start a drag.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
         switch (event.keyCode, modifiers) {

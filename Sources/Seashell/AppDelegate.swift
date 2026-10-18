@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notesStore: NotesStore?
     private let dragWatcher = DragWatcher()
     private let edgeScrollWatcher = EdgeScrollWatcher()
+    private let optionShakeWatcher = OptionShakeWatcher()
+    private var grabShelf: GrabShelf?
     private let settingsWindow = SettingsWindow()
     private var isSecondCopy = false
 
@@ -55,6 +57,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         dragWatcher.onShake = { floatingShelf.show(at: $0) }
         observeChanges { [dragWatcher] in dragWatcher.setShakeSensitivity(AppSettings.shared.shakeSensitivity) }
+
+        let grabShelf = GrabShelf(store: store)
+        self.grabShelf = grabShelf
+        grabShelf.onMore = { panel.open(on: NSScreen.containing($0), reason: "More… on the grab shelf") }
+        grabShelf.onDraggedOut = { point in
+            // Typing should go where the item landed.
+            guard let target = PanelController.app(at: point), target != NSRunningApplication.current else { return }
+            target.activate()
+        }
+        optionShakeWatcher.onShake = { grabShelf.toggle(at: $0) }
+        observeChanges { [optionShakeWatcher] in optionShakeWatcher.setShakeSensitivity(AppSettings.shared.shakeSensitivity) }
+        optionShakeWatcher.start()
         dragWatcher.onHoldAtTopEdge = { panel.open(on: NSScreen.containing($0), reason: "drag held at top edge") }
         dragWatcher.start()
         edgeScrollWatcher.onGesture = { gesture, screen in

@@ -51,6 +51,18 @@ struct StashLibraryTests {
         #expect(ShelfManifest.read(in: stash).order == ["Zwei", "Three"])
     }
 
+    @Test func recentItemsComeFromEveryShelfNewestFirst() throws {
+        let mover = try folder.mover()
+        let main = try folder.folder("Stash/Main")
+        let work = try folder.folder("Stash/Work")
+        for (text, shelf) in [("oldest", main), ("middle", work), ("newest", main)] {
+            _ = try mover.stash(text: text, into: shelf)
+            Thread.sleep(forTimeInterval: 0.05)  // distinct "date added"
+        }
+        #expect(library.recentItems(limit: 8).map(\.name) == ["newest.txt", "middle.txt", "oldest.txt"])
+        #expect(library.recentItems(limit: 2).map(\.name) == ["newest.txt", "middle.txt"])
+    }
+
     @Test func mainCannotMove() throws {
         let main = Shelf(url: try folder.folder("Stash/Main"))
         #expect(throws: ShelfError.defaultShelf) { try library.moveShelf(main, to: 1) }

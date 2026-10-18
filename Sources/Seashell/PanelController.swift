@@ -189,7 +189,7 @@ final class PanelController: NSObject {
 
     /// The app owning the frontmost ordinary window at `point`. Window owner and
     /// bounds don't need Screen Recording permission.
-    private static func app(at point: NSPoint) -> NSRunningApplication? {
+    static func app(at point: NSPoint) -> NSRunningApplication? {
         // Window list coordinates start at the top left of the main display.
         guard let mainHeight = NSScreen.screens.first?.frame.maxY,
               let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]

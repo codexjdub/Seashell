@@ -118,6 +118,14 @@ public struct StashLibrary: Sendable {
         }
     }
 
+    /// The most recently added items across every shelf, newest first: what the
+    /// grab shelf offers.
+    public func recentItems(limit: Int) -> [StashItem] {
+        Array(shelves().flatMap { items(in: $0) }
+            .sorted { dateAdded($0.url) > dateAdded($1.url) }
+            .prefix(limit))
+    }
+
     /// Names the shelf's manifest still lists although the item is gone, e.g.
     /// moved out or deleted in Finder.
     public func vanishedEntries(in shelf: Shelf) -> Set<String> {
