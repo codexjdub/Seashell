@@ -56,6 +56,8 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
     private static let spacing: CGFloat = 6
 
     var onMore: ((NSPoint) -> Void)?
+    /// The seal on its edge opens Settings, like the panel's.
+    var onSettings: (() -> Void)?
     /// After an item is dropped somewhere: where, so its app can come forward.
     var onDraggedOut: ((NSPoint) -> Void)?
 
@@ -71,6 +73,10 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
     private var monitors: [Any] = []
     private var isDragging = false
     private var gridTop: NSLayoutConstraint?
+    private lazy var seal = Seal.button(target: self, action: #selector(sealClicked), toolTip: "Seashell Settings")
+    /// Sizes around the seal, written at Small and scaled with the text.
+    private var sealConstraints: [(constraint: NSLayoutConstraint, base: CGFloat)] = []
+    private var sealCenter: NSLayoutConstraint?
     /// Moving away doesn't count until then: the end of the shake itself can
     /// carry the pointer off before you reach for the shelf.
     private var shownAt = ContinuousClock.now
@@ -98,7 +104,12 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
         gridTop?.constant = Self.padding + UIScale.pt(28)
         emptyLabel.isHidden = !items.isEmpty
         grid.reloadData()
-        let size = Self.size(for: items.count)
+        _ = panel  // built first, so its seal constraints exist to size
+        let shelf = Self.size(for: items.count)
+        for (constraint, base) in sealConstraints { constraint.constant = UIScale.pt(base) }
+        sealCenter?.constant = Seal.centerOffset(inHeight: shelf.height)
+        // The window is a little wider than the shelf, for the seal on its edge.
+        let size = NSSize(width: shelf.width + UIScale.pt(Seal.sideRoom), height: shelf.height)
         panel.setContentSize(size)
         panel.setFrameOrigin(Self.origin(near: point, size: size))
         panel.orderFrontRegardless()
@@ -119,8 +130,10 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
         let columns = max(1, min(count, Self.columns))
         let rows = max(1, Int(ceil(Double(count) / Double(Self.columns))))
         let header = UIScale.pt(28)
-        let width = CGFloat(columns) * tile.width + CGFloat(columns - 1) * spacing + 2 * padding
-        let gridHeight = count == 0 ? UIScale.pt(40) : CGFloat(rows) * tile.height + CGFloat(rows - 1) * spacing
+        // All of them at once, never scrolling; a couple of points spare so rounding
+        // at any text size can't push a column or row out.
+        let width = CGFloat(columns) * tile.width + CGFloat(columns - 1) * spacing + 2 * padding + 2
+        let gridHeight = count == 0 ? UIScale.pt(40) : CGFloat(rows) * tile.height + CGFloat(rows - 1) * spacing + 2
         return NSSize(width: max(width, UIScale.pt(240)), height: header + gridHeight + 2 * padding)
     }
 
@@ -162,6 +175,11 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
     private func stopWatching() {
         monitors.forEach(NSEvent.removeMonitor)
         monitors = []
+    }
+
+    @objc private func sealClicked() {
+        hide(reason: "seal clicked")
+        onSettings?()
     }
 
     @objc private func moreClicked() {
@@ -247,12 +265,13 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
         moreButton.bezelStyle = .accessoryBarAction
         moreButton.toolTip = "Open the panel"
 
-        // A collection view lays out its items inside a scroll view; this one never scrolls.
-        let scroll = NSScrollView()
+        // A collection view lays out its items inside a scroll view; this one is
+        // sized to show them all and never scrolls or bounces.
+        let scroll = FixedScrollView()
         scroll.documentView = grid
         scroll.drawsBackground = false
-        scroll.hasVerticalScroller = false
-        scroll.hasHorizontalScroller = false
+        scroll.verticalScrollElasticity = .none
+        scroll.horizontalScrollElasticity = .none
         for view in [title, moreButton, scroll, emptyLabel] {
             view.translatesAutoresizingMaskIntoConstraints = false
             background.addSubview(view)
@@ -272,7 +291,48 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
             emptyLabel.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
         ])
-        panel.contentView = background
+        // The shelf, with the seal a fifth of the way down its right edge.
+        let container = NSView()
+        for view in [background, seal] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(view)
+        }
+        let scaled: [(NSLayoutConstraint, CGFloat)] = [
+            (container.trailingAnchor.constraint(equalTo: background.trailingAnchor), Seal.sideRoom),
+            (seal.trailingAnchor.constraint(equalTo: background.trailingAnchor), Seal.overhang),
+            (seal.widthAnchor.constraint(equalToConstant: 0), Seal.size),
+            (seal.heightAnchor.constraint(equalToConstant: 0), Seal.size),
+        ]
+        sealConstraints = scaled.map { (constraint: $0.0, base: $0.1) }
+        for (constraint, base) in sealConstraints { constraint.constant = UIScale.pt(base) }
+        let sealCenter = seal.centerYAnchor.constraint(equalTo: background.topAnchor, constant: 60)
+        self.sealCenter = sealCenter
+        NSLayoutConstraint.activate(sealConstraints.map(\.constraint) + [
+            background.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            background.topAnchor.constraint(equalTo: container.topAnchor),
+            background.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            sealCenter,
+        ])
+        panel.contentView = container
         return panel
+    }
+}
+
+/// A scroll view that never shows scroll bars or scrolls. The collection view
+/// turns its scroll bar back on as it lays out, and with a mouse connected
+/// that bar takes room from the grid, squeezing it to three columns.
+final class FixedScrollView: NSScrollView {
+    override var hasVerticalScroller: Bool {
+        get { false }
+        set {}
+    }
+
+    override var hasHorizontalScroller: Bool {
+        get { false }
+        set {}
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        nextResponder?.scrollWheel(with: event)
     }
 }

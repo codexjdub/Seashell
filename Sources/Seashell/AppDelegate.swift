@@ -61,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let grabShelf = GrabShelf(store: store)
         self.grabShelf = grabShelf
         grabShelf.onMore = { panel.open(on: NSScreen.containing($0), reason: "More… on the grab shelf") }
+        grabShelf.onSettings = { [settingsWindow] in settingsWindow.show() }
         grabShelf.onDraggedOut = { point in
             // Typing should go where the item landed.
             guard let target = PanelController.app(at: point), target != NSRunningApplication.current else { return }

@@ -27,6 +27,10 @@ final class FloatingShelf {
                                              onDrop: { _ in false })
     private lazy var panel = makePanel()
     private var hideTask: Task<Void, Never>?
+    /// The app icon on its right edge, like the panel's and the grab shelf's.
+    private let seal = Seal.image()
+    private var sealConstraints: [(constraint: NSLayoutConstraint, base: CGFloat)] = []
+    private var sealCenter: NSLayoutConstraint?
     /// The shelves when the shelf appeared, and which `maxShelves` of them show.
     private var shelves: [Shelf] = []
     private var page = 0
@@ -42,7 +46,12 @@ final class FloatingShelf {
         zones.spacing = UIScale.pt(Self.spacing)
         moreZone.reset()
         showPage()
-        let size = Self.size(zones: isPaged ? Self.maxShelves + 1 : shelves.count)
+        _ = panel  // built first, so its seal constraints exist to size
+        let shelf = Self.size(zones: isPaged ? Self.maxShelves + 1 : shelves.count)
+        for (constraint, base) in sealConstraints { constraint.constant = UIScale.pt(base) }
+        sealCenter?.constant = Seal.centerOffset(inHeight: shelf.height)
+        // A little wider than the shelf, for the seal on its edge.
+        let size = NSSize(width: shelf.width + UIScale.pt(Seal.sideRoom), height: shelf.height)
         panel.setContentSize(size)
         panel.setFrameOrigin(origin(near: point, size: size))
         panel.orderFrontRegardless()
@@ -150,7 +159,28 @@ final class FloatingShelf {
             zones.topAnchor.constraint(equalTo: background.topAnchor, constant: Self.padding),
             zones.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -Self.padding),
         ])
-        panel.contentView = background
+        let container = NSView()
+        for view in [background, seal] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(view)
+        }
+        let scaled: [(NSLayoutConstraint, CGFloat)] = [
+            (container.trailingAnchor.constraint(equalTo: background.trailingAnchor), Seal.sideRoom),
+            (seal.trailingAnchor.constraint(equalTo: background.trailingAnchor), Seal.overhang),
+            (seal.widthAnchor.constraint(equalToConstant: 0), Seal.size),
+            (seal.heightAnchor.constraint(equalToConstant: 0), Seal.size),
+        ]
+        sealConstraints = scaled.map { (constraint: $0.0, base: $0.1) }
+        for (constraint, base) in sealConstraints { constraint.constant = UIScale.pt(base) }
+        let sealCenter = seal.centerYAnchor.constraint(equalTo: background.topAnchor, constant: 30)
+        self.sealCenter = sealCenter
+        NSLayoutConstraint.activate(sealConstraints.map(\.constraint) + [
+            background.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            background.topAnchor.constraint(equalTo: container.topAnchor),
+            background.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            sealCenter,
+        ])
+        panel.contentView = container
         return panel
     }
 }

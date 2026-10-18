@@ -36,11 +36,7 @@ final class PanelController: NSObject {
     private let pill = NSVisualEffectView()
     private static let pillWidth: CGFloat = 34
     private static let pillButtonSize: CGFloat = 26
-    private static let iconSize: CGFloat = 42
-    /// The icon's frame past the panel's right edge: about a third of the
-    /// visible icon (the artwork leaves a margin inside its frame).
-    private static let iconOverhang: CGFloat = 15
-    /// From the panel's top and bottom edges to the icon and the pill.
+    /// From the panel's bottom edge to the pill.
     private static let cornerInset: CGFloat = 6
     private lazy var closeButton: NSButton = {
         let button = PillButton(target: self, action: #selector(closeButtonClicked))
@@ -51,12 +47,7 @@ final class PanelController: NSObject {
     private lazy var pinButton: NSButton = PillButton(target: self, action: #selector(togglePin))
     /// The app icon at the top of the pill; opens Settings.
     private lazy var iconButton: NSButton = {
-        let button = IconButton(image: NSApp.applicationIconImage, target: self, action: #selector(iconClicked))
-        button.isBordered = false
-        button.imageScaling = .scaleProportionallyUpOrDown
-        button.toolTip = "Seashell Settings"
-        button.setAccessibilityLabel("Seashell Settings")
-        return button
+        Seal.button(target: self, action: #selector(iconClicked), toolTip: "Seashell Settings")
     }()
     private var clickMonitor: Any?
     private let dragPasteboard = NSPasteboard(name: .drag)
@@ -419,9 +410,9 @@ final class PanelController: NSObject {
         return panel
     }
 
-    /// The panel, with the app icon over its top right corner like a seal
-    /// (Settings), and pin and close in a small pill over the bottom right
-    /// corner, each about a third outside. They act on the whole panel, not on
+    /// The panel, with the app icon on its right edge like a seal, a fifth of
+    /// the way down (Settings), and pin and close in a small pill over the
+    /// bottom right corner, each about a third outside. They act on the whole panel, not on
     /// Notes. The window around them is see-through, and clicks there go to
     /// whatever is underneath.
     private func makeWindowContent(around background: NSView) -> NSView {
@@ -447,11 +438,10 @@ final class PanelController: NSObject {
         let scaled: [(NSLayoutConstraint, CGFloat)] = [
             (background.leadingAnchor.constraint(equalTo: container.leadingAnchor), side),
             (container.trailingAnchor.constraint(equalTo: background.trailingAnchor), side),
-            (iconButton.trailingAnchor.constraint(equalTo: background.trailingAnchor), Self.iconOverhang),
-            (iconButton.topAnchor.constraint(equalTo: background.topAnchor), Self.cornerInset),
+            (iconButton.trailingAnchor.constraint(equalTo: background.trailingAnchor), Seal.overhang),
             (background.bottomAnchor.constraint(equalTo: pill.bottomAnchor), Self.cornerInset + 4),
-            (iconButton.widthAnchor.constraint(equalToConstant: 0), Self.iconSize),
-            (iconButton.heightAnchor.constraint(equalToConstant: 0), Self.iconSize),
+            (iconButton.widthAnchor.constraint(equalToConstant: 0), Seal.size),
+            (iconButton.heightAnchor.constraint(equalToConstant: 0), Seal.size),
             (pill.widthAnchor.constraint(equalToConstant: 0), Self.pillWidth),
             (pill.heightAnchor.constraint(equalToConstant: 0), 2 * Self.pillButtonSize + 12),
             (pinButton.widthAnchor.constraint(equalToConstant: 0), Self.pillButtonSize),
@@ -464,6 +454,9 @@ final class PanelController: NSObject {
         NSLayoutConstraint.activate(scaledConstraints.map(\.constraint) + [
             background.topAnchor.constraint(equalTo: container.topAnchor),
             background.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            // A fifth of the way down, like on the shelves, however tall the panel is.
+            NSLayoutConstraint(item: iconButton, attribute: .centerY, relatedBy: .equal,
+                               toItem: background, attribute: .bottom, multiplier: Seal.shelfPosition, constant: 0),
             pill.centerXAnchor.constraint(equalTo: iconButton.centerXAnchor),
             buttons.centerXAnchor.constraint(equalTo: pill.centerXAnchor),
             buttons.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
