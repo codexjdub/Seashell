@@ -53,6 +53,8 @@ final class TipsWindow: NSObject {
              "Drag a shelf’s tab out of the panel to keep it in its own window."),
             ("menubar.arrow.up.rectangle", "Drop on the menu bar icon",
              "Anything dropped on Seashell’s icon goes into Main."),
+            ("camera.viewfinder", "Screenshots straight to Stash",
+             "Press ⇧⌘5. In the toolbar near the bottom of the screen, click Options, choose Other Location… and pick Documents ▸ Seashell ▸ Stash ▸ Main."),
         ]
     }
 
