@@ -378,12 +378,6 @@ final class StashPanelController: NSViewController {
 // MARK: Grid data and drops
 
 extension StashPanelController: NSCollectionViewDataSource, NSCollectionViewDelegateFlowLayout {
-    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout,
-                        sizeForItemAt indexPath: IndexPath) -> NSSize {
-        guard items[indexPath.item].kind == .text else { return StashItemCell.tileSize }
-        return NSSize(width: StashItemCell.textTileWidth, height: StashItemCell.tileSize.height)
-    }
-
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
         items.count
     }

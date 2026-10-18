@@ -51,8 +51,6 @@ final class StashItemCell: NSCollectionViewItem {
     // Sizes at the current text size (see UIScale).
     static var iconSize: CGFloat { UIScale.pt(56) }
     static var tileSize: NSSize { NSSize(width: UIScale.pt(92), height: UIScale.pt(104)) }
-    /// Text cards span two tiles (plus the gap), to fit about three times as much text.
-    static var textTileWidth: CGFloat { tileSize.width * 2 + 6 }
 
     // Files and folders
     private let icon = NSImageView()
@@ -63,7 +61,7 @@ final class StashItemCell: NSCollectionViewItem {
     private let noteCard = CardView(color: NoteTint.color, fill: NoteTint.fill, border: NoteTint.border)
     private let noteText = PassThroughLabel(wrappingLabelWithString: "")
     // Links
-    private let linkCard = CardView(color: .systemBlue)
+    private let linkCard = CardView(color: LinkTint.card, fill: LinkTint.fill, border: LinkTint.border)
     private let linkSymbol = NSImageView()
     private let linkTitle = PassThroughLabel(wrappingLabelWithString: "")
     private let linkSite = PassThroughLabel(labelWithString: "")
@@ -87,12 +85,12 @@ final class StashItemCell: NSCollectionViewItem {
         name.cell?.truncatesLastVisibleLine = true
 
         noteText.textColor = .labelColor
-        noteText.maximumNumberOfLines = 7
+        noteText.maximumNumberOfLines = 5  // what fits in one tile at 13 pt
         noteText.lineBreakMode = .byWordWrapping
         noteText.cell?.truncatesLastVisibleLine = true
 
         linkSymbol.image = NSImage(systemSymbolName: "link", accessibilityDescription: "Link")
-        linkSymbol.contentTintColor = .systemBlue
+        linkSymbol.contentTintColor = LinkTint.symbol
         linkTitle.alignment = .center
         linkTitle.maximumNumberOfLines = 2  // at this size, 3 lines would push the site off the card
         linkTitle.lineBreakMode = .byWordWrapping
@@ -168,7 +166,7 @@ final class StashItemCell: NSCollectionViewItem {
         name.font = UIScale.font(12)
         name.preferredMaxLayoutWidth = tile.width - 8
         noteText.font = UIScale.font(13)  // same as the note editor
-        noteText.preferredMaxLayoutWidth = Self.textTileWidth - 22  // card inset 10, padding 12
+        noteText.preferredMaxLayoutWidth = tile.width - 22  // card inset 10, padding 12
         linkSymbol.symbolConfiguration = .init(pointSize: UIScale.pt(18), weight: .medium)
         linkTitle.font = UIScale.font(14, weight: .semibold)
         linkTitle.preferredMaxLayoutWidth = tile.width - 20
@@ -248,6 +246,16 @@ enum NoteTint {
     static let border = Opacity(light: 0.30, dark: 0.22)
     /// The selected note in the Notes list.
     static let selection = Opacity(light: 0.22, dark: 0.16)
+}
+
+/// Link cards are neutral, with only the link symbol in blue: a blue card
+/// would look selected.
+@MainActor
+enum LinkTint {
+    static let card = NSColor.labelColor
+    static let fill = Opacity(light: 0.04, dark: 0.06)
+    static let border = Opacity(light: 0.14, dark: 0.18)
+    static let symbol = NSColor.systemBlue
 }
 
 /// An opacity that can differ between Light and Dark Mode.

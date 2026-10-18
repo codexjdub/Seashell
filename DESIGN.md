@@ -61,7 +61,8 @@ Rules:
 
 - No modifier keys change behaviour. The drop zone decides.
 - To take a file out of Stash for good: drag it out (a copy lands), then right-click → Delete.
-- In the panel, text shows as a note card (two tiles wide) with its first lines and a link as a card with its title and site; hovering shows the full text or address. Files and folders show thumbnails.
+- A promised file (Photos, Mail, pictures from web pages) goes into the shelf only once it has content that has stopped growing for half a second. Chrome and other Chromium browsers use an older promise that reports the file before writing it. If it's still empty after 15 s, Seashell downloads the picture from the web address the drag carried (if that's really a picture), or else saves the picture data the drag carried as a PNG; failing both, it says so. An empty file is never stashed.
+- In the panel, every item takes one tile. Text shows as a note card with its first lines (up to five at 13 pt), on the faint note yellow and a link as a neutral card with a blue link symbol, its title and site (a blue card would look selected); hovering shows the full text or address. Files and folders show thumbnails.
 - Text (`.txt` up to 1 MB) and links (`.webloc`) drag out as their content — the words or the address — so they drop into text fields and browsers. Finder still gets the file: it's a file promise that Seashell writes on drop.
 - Any file or folder over the limit in Settings (1 GB by default) going into Stash asks first — everything in Stash uploads to iCloud and counts against its storage.
 - Moving into Stash from another volume is copy → verify → delete the original, like Finder.

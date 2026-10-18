@@ -43,11 +43,14 @@ final class StashDropper {
             return false
         }
 
+        // Read now: the drag's pasteboard is gone by the time a slow promise gives up.
+        let fallback = objects.contains { $0 is NSFilePromiseReceiver } ? PromiseFallback(pasteboard) : nil
+
         var files: [URL] = []
         for object in objects {
             switch object {
             case let receiver as NSFilePromiseReceiver:
-                receive(receiver, into: shelf)
+                receive(receiver, into: shelf, fallback: fallback ?? PromiseFallback(pasteboard))
             case let url as URL where url.isFileURL:
                 files.append(url)
             case let url as URL:
@@ -88,9 +91,10 @@ final class StashDropper {
         }
     }
 
-    /// Apps such as Photos and Mail hand over a file only when it's dropped. It is
-    /// written to a temporary folder on the same disk, then moved into the shelf.
-    private func receive(_ receiver: NSFilePromiseReceiver, into shelf: URL) {
+    /// Apps such as Photos, Mail and web browsers hand over a file only when it's
+    /// dropped. It is written to a temporary folder on the same disk, then moved
+    /// into the shelf.
+    private func receive(_ receiver: NSFilePromiseReceiver, into shelf: URL, fallback: PromiseFallback) {
         let incoming = URL.temporaryDirectory.appending(path: "Seashell-Incoming/\(UUID().uuidString)", directoryHint: .isDirectory)
         do {
             try FileManager.default.createDirectory(at: incoming, withIntermediateDirectories: true)
@@ -106,9 +110,52 @@ final class StashDropper {
                     self.report("Couldn’t receive “\(file.lastPathComponent)”", error)
                     return
                 }
-                await self.stash([file], into: shelf, rememberOrigin: false)
+                await self.finishPromise(file, into: shelf, fallback: fallback)
             }
         }
+    }
+
+    /// Stashes a promised file once its app has finished writing it. If it never
+    /// does (it stays empty), the picture's web address or data from the same
+    /// drag stands in. An empty file is never stashed.
+    private func finishPromise(_ file: URL, into shelf: URL, fallback: PromiseFallback) async {
+        let name = file.lastPathComponent
+        let started = ContinuousClock.now
+        if await PromisedFile.waitUntilWritten(file) {
+            let waited = ContinuousClock.now - started
+            Log.info("Promised \(name) arrived after \(waited.formatted(.units(allowed: [.seconds], fractionalPart: .show(length: 1))))")
+            await stash([file], into: shelf, rememberOrigin: false)
+            return
+        }
+        Log.info("Promised \(name) was still empty after 15 s")
+        try? FileManager.default.removeItem(at: file)
+        if let address = fallback.webAddress, let data = await Self.downloadImage(address) {
+            do {
+                try data.write(to: file)
+                Log.info("Downloaded \(name) from \(address.host() ?? "the web") instead")
+                await stash([file], into: shelf, rememberOrigin: false)
+                return
+            } catch {
+                Log.error("Couldn’t save the downloaded \(name): \(error.localizedDescription)")
+            }
+        }
+        if let data = fallback.imageData {
+            Log.info("Saved the dragged picture data instead of \(name)")
+            run("picture") { try $0.stash(imageData: data, into: shelf) }
+            return
+        }
+        report("Couldn’t get “\(name)”", DropError.neverWritten)
+    }
+
+    /// The picture at `address`, if it's a picture: dragging a linked image can
+    /// carry the link's page instead.
+    private static func downloadImage(_ address: URL) async -> Data? {
+        guard address.scheme == "https" else { return nil }
+        let request = URLRequest(url: address, timeoutInterval: 15)
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              response.mimeType?.hasPrefix("image/") == true, !data.isEmpty
+        else { return nil }
+        return data
     }
 
     private func run(_ what: String, _ body: (FileMover) throws -> Void) {
@@ -128,5 +175,26 @@ final class StashDropper {
 
     private func report(_ message: String, _ error: any Error) {
         Alerts.showError(message, error)
+    }
+}
+
+/// What else a drag with a promised file carried, in case the promise is never kept.
+struct PromiseFallback: Sendable {
+    let imageData: Data?
+    let webAddress: URL?
+
+    @MainActor
+    init(_ pasteboard: NSPasteboard) {
+        imageData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff)
+        let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] ?? []
+        webAddress = urls.first { !$0.isFileURL }
+    }
+}
+
+private enum DropError: LocalizedError {
+    case neverWritten
+
+    var errorDescription: String? {
+        "The app it came from never finished handing it over, and the drag had no picture to use instead."
     }
 }
