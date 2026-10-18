@@ -309,7 +309,6 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
             ItemActions.rename(item, with: self.mover)
             self.store.reload()
         }
-        menu.addItem(ItemActions.shareMenuItem(for: selection, from: window))
         menu.addItem(.separator())
         add("Put Back", enabled: !selection.isEmpty && selection.allSatisfy { $0.origin != nil }) { [weak self] in
             self?.perform("put back", selection.filter { $0.origin != nil }.map(\.url)) { _ = try $0.putBack($1) }

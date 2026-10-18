@@ -335,7 +335,6 @@ final class StashPanelController: NSViewController {
         add("Copy", #selector(copySelection))
         add("Paste", #selector(pasteFromMenu), enabled: ItemActions.canPaste)
         add("Rename…", #selector(renameSelection), enabled: selection.count == 1)
-        menu.addItem(ItemActions.shareMenuItem(for: selection, from: view.window))
         menu.addItem(.separator())
         add("Put Back", #selector(putBackSelection), enabled: !selection.isEmpty && selection.allSatisfy { $0.origin != nil })
         add("Move to Trash", #selector(deleteSelection))
