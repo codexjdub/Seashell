@@ -10,7 +10,17 @@ final class EdgeScrollWatcher {
     private var detector = EdgeScrollDetector()
     private var monitors: [Any] = []
 
-    func start() {
+    /// Every scroll on the Mac wakes Seashell while this is on, so it's on only
+    /// when a gesture could do something.
+    var isWatching = false {
+        didSet {
+            guard isWatching != oldValue else { return }
+            isWatching ? start() : stop()
+        }
+    }
+
+    private func start() {
+        detector.reset()
         // Global for scrolls over other apps and the menu bar; local for scrolls over Seashell's own windows.
         if let global = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel, handler: { [weak self] event in
             MainActor.assumeIsolated { self?.handle(event) }
@@ -23,7 +33,13 @@ final class EdgeScrollWatcher {
         }) {
             monitors.append(local)
         }
-        Log.info(monitors.count == 2 ? "Watching the top edge for a pull down" : "Couldn’t watch scrolling; pulling down won’t open the panel")
+        Log.info(monitors.count == 2 ? "Watching scrolls at the top edge" : "Couldn’t watch scrolling; pulling down won’t open the panel")
+    }
+
+    private func stop() {
+        monitors.forEach(NSEvent.removeMonitor)
+        monitors = []
+        Log.info("Stopped watching scrolls at the top edge")
     }
 
     private func handle(_ event: NSEvent) {

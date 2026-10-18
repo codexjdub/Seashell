@@ -4,43 +4,77 @@ import SeashellCore
 /// Watches for a shake of the pointer with ⌥ held and no mouse button down:
 /// the gesture for the grab shelf. ⌥ keeps it from firing when you shake the
 /// pointer just to find it (macOS enlarges the pointer on a plain shake).
+///
+/// It listens for ⌥ and follows the pointer only while ⌥ is held: watching
+/// every mouse move would wake Seashell over 100 times a second whenever the
+/// pointer moves. (Hearing modifier keys needs no Accessibility permission.)
 @MainActor
 final class OptionShakeWatcher {
     var onShake: ((NSPoint) -> Void)?
 
     /// Nil when shaking is off in Settings.
-    private var detector = ShakeSensitivity.standard.detector
-    private var monitors: [Any] = []
+    private var detector: ShakeDetector?
+    private var keyMonitors: [Any] = []
+    private var pointerMonitors: [Any] = []
 
+    /// Starts watching, or stops altogether when shaking is off.
     func setShakeSensitivity(_ sensitivity: ShakeSensitivity) {
         detector = sensitivity.detector
+        detector == nil ? stop() : start()
     }
 
-    func start() {
-        // Global for the pointer over other apps; local for over Seashell's own windows.
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: { [weak self] event in
-            MainActor.assumeIsolated { self?.handle(event) }
-        }) {
-            monitors.append(global)
-        }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved, handler: { [weak self] event in
-            MainActor.assumeIsolated { self?.handle(event) }
-            return event
-        }) {
-            monitors.append(local)
-        }
-        Log.info(monitors.count == 2 ? "Watching for ⌥-shake" : "Couldn’t watch the pointer; ⌥-shake won’t open the grab shelf")
+    private func start() {
+        guard keyMonitors.isEmpty else { return }
+        keyMonitors = Self.monitor(.flagsChanged) { [weak self] in self?.modifiersChanged($0) }
+        Log.info(keyMonitors.count == 2 ? "Watching for ⌥-shake" : "Couldn’t watch for ⌥; ⌥-shake won’t open the grab shelf")
     }
 
-    private func handle(_ event: NSEvent) {
-        guard event.modifierFlags.intersection([.command, .shift, .option, .control]) == .option else {
-            detector?.reset()
-            return
-        }
+    private func stop() {
+        guard !keyMonitors.isEmpty else { return }
+        stopFollowingPointer()
+        keyMonitors.forEach(NSEvent.removeMonitor)
+        keyMonitors = []
+        Log.info("Stopped watching for ⌥-shake (shaking is off)")
+    }
+
+    private func modifiersChanged(_ event: NSEvent) {
+        Self.isOptionAlone(event) ? followPointer() : stopFollowingPointer()
+    }
+
+    private func followPointer() {
+        guard pointerMonitors.isEmpty else { return }
+        detector?.reset()
+        pointerMonitors = Self.monitor(.mouseMoved) { [weak self] in self?.pointerMoved($0) }
+    }
+
+    private func stopFollowingPointer() {
+        pointerMonitors.forEach(NSEvent.removeMonitor)
+        pointerMonitors = []
+    }
+
+    private func pointerMoved(_ event: NSEvent) {
+        // ⌥ can be let go unheard, e.g. while a password field has the keyboard.
+        guard Self.isOptionAlone(event) else { return stopFollowingPointer() }
         let point = NSEvent.mouseLocation
         if detector?.add(x: point.x, at: event.timestamp) == true {
             onShake?(point)
         }
+    }
+
+    private static func isOptionAlone(_ event: NSEvent) -> Bool {
+        event.modifierFlags.intersection([.command, .shift, .option, .control]) == .option
+    }
+
+    /// Global for events in other apps; local for Seashell's own windows.
+    private static func monitor(_ events: NSEvent.EventTypeMask, _ handle: @escaping @MainActor (NSEvent) -> Void) -> [Any] {
+        let global = NSEvent.addGlobalMonitorForEvents(matching: events) { event in
+            MainActor.assumeIsolated { handle(event) }
+        }
+        let local = NSEvent.addLocalMonitorForEvents(matching: events) { event in
+            MainActor.assumeIsolated { handle(event) }
+            return event
+        }
+        return [global, local].compactMap { $0 }
     }
 }
 

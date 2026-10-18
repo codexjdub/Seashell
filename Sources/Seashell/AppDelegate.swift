@@ -89,7 +89,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             grabShelf.toggle(at: point)
         }
         observeChanges { [optionShakeWatcher] in optionShakeWatcher.setShakeSensitivity(AppSettings.shared.shakeSensitivity) }
-        optionShakeWatcher.start()
         dragWatcher.onHoldAtTopEdge = { panel.open(on: NSScreen.containing($0), reason: "drag held at top edge") }
         dragWatcher.start()
         edgeScrollWatcher.onGesture = { gesture, screen in
@@ -100,7 +99,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .pushUp: panel.close(reason: "push up at top edge")
             }
         }
-        edgeScrollWatcher.start()
+        // Pulling down needs scrolls all the time; pushing up only while the panel is open.
+        let updateScrollWatching: @MainActor @Sendable () -> Void = { [edgeScrollWatcher] in
+            edgeScrollWatcher.isWatching = AppSettings.shared.opensOnPullDown || panel.isOpen
+        }
+        panel.onOpenChanged = updateScrollWatching
+        observeChanges(updateScrollWatching)
         tipsWindow.showIfFirstLaunch()
     }
 

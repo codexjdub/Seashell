@@ -45,7 +45,7 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 
 Shaking the cursor during a drag pops a **floating shelf** near the cursor with one drop zone per shelf, in the panel's tab order (Main first), so you drop straight into the shelf you want. 5 shelves show at a time; past that, holding the drag over **More…** for 0.4 s shows the next 5 in the same spot (the shelf keeps its size, so More… stays under the pointer), and on the last page it reads **Back to Main…** and starts over. Move off More… and back to flip again. Copy and Cut zones would join it with the Clipboard (on hold). It hides about a second after the mouse is released, whether or not you dropped on it, and never deletes anything. It wears the app icon on its right edge too, a fifth of the way down (just a picture: it can't be clicked mid-drag).
 
-**Grab shelf**: shake the pointer with ⌥ held and no button down, and a shelf pops up above the pointer with the 8 most recently added items from every shelf, newest first, as the same tiles as the panel, four to a row; it's sized to show all of them at once and never scrolls or bounces. The app icon sits on its right edge like the panel's seal, a fifth of the way down; clicking it opens Settings. Drag one out and a copy lands where you drop it (the item stays in Stash), and that app comes forward. It goes away after a drop, a click elsewhere, a second ⌥-shake, or when the pointer moves more than 220 pt away (not in the first second, so the end of the shake doesn't count); More… opens the full panel. ⌥ keeps it from firing when you shake the pointer just to find it (macOS enlarges the pointer on a plain shake, and still does with ⌥). It follows the shake sensitivity in Settings; Off turns it off too.
+**Grab shelf**: shake the pointer with ⌥ held and no button down, and a shelf pops up above the pointer with the 8 most recently added items from every shelf, newest first, as the same tiles as the panel, four to a row; it's sized to show all of them at once and never scrolls or bounces. The app icon sits on its right edge like the panel's seal, a fifth of the way down; clicking it opens Settings. Drag one out and a copy lands where you drop it (the item stays in Stash), and that app comes forward. It goes away after a drop, a click elsewhere, a second ⌥-shake, or when the pointer moves more than 220 pt away (not in the first second, so the end of the shake doesn't count); More… opens the full panel. ⌥ keeps it from firing when you shake the pointer just to find it (macOS enlarges the pointer on a plain shake, and still does with ⌥). It follows the shake sensitivity in Settings; Off turns it off too. Seashell listens for ⌥ and follows the pointer only while ⌥ alone is held, so ordinary mouse movement never wakes it.
 
 **Tear-off shelves**: drag a shelf's tab out of the panel and let go anywhere outside it, and that shelf opens in its own small floating window there (Main too; Main still can't be reordered). It's a window onto the shelf, not a copy: the same files, in iCloud and in the panel. It shows the shelf's name, a close button and its items, four tiles across and two rows high (more scroll), and does what the panel does: drop to stash, drag out for a copy, double-click or ⌘O to open, Space to preview, ⌘⌫ and the right-click menu. It wears the seal on its right edge a fifth of the way down, like the panel and shelves (click it for Settings). Drag it by its header to move it. It floats above other windows on every Space and stays until you close it (the shelf stays in Stash). Open ones come back after a restart where they were. Renaming the shelf in the panel keeps its window open under the new name; deleting it, or renaming it in Finder or on another Mac (which can't be told from a deletion), closes the window. One per shelf: tearing off an open one moves its window.
 
@@ -180,7 +180,18 @@ Answer `move` only for file drops. For anything else answer `copy`: a text sourc
 
 Use the global `leftMouseDragged` monitor plus the drag pasteboard's `changeCount` to know content is being dragged. No polling needed. Global monitors don't see drags that start inside Seashell, so add a local monitor for those.
 
+### Resource use
+
+Keep it lean: every global monitor wakes Seashell for each matching event anywhere on the Mac, and that delivery (not Seashell's own code) is the cost: roughly 2–12% of one core while events stream in at ~120 a second. So nothing watches what it doesn't need:
+
+- ⌥-shake listens for ⌥ (rare) and follows the pointer only while ⌥ alone is held.
+- Scrolls are watched only while pull down is on or the panel is open (pushing up closes it).
+- Drags are watched on press and drag only; checking the drag pasteboard costs under a microsecond.
+- Shake Off stops the ⌥-shake watcher; the drag watcher stays for holding a drag at the top edge.
+
+Measured 2026-10-18: 2.6 MB on disk; 17 MB of memory at launch, 47 MB once the panel has opened (kept for an instant reopen); 0% CPU and no wakeups when idle; 0% while the mouse moves without ⌥ (it was 2–12% before).
+
 ### Permissions
 
 - Documents folder access: no prompt appeared in the spike (macOS 27.0.1, not sandboxed). Keep `NSDocumentsFolderUsageDescription` and sign every build with `codexjdub` in case a later macOS asks.
-- Global mouse/scroll monitors work without Accessibility (spike).
+- Global mouse/scroll monitors work without Accessibility (spike), and so does a modifier-key (`flagsChanged`) monitor (tested 2026-10-18).

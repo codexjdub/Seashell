@@ -7,7 +7,11 @@ import SeashellCore
 final class PanelController: NSObject {
     private static let pinnedKey = "panelPinned"
 
-    private(set) var isOpen = false
+    private(set) var isOpen = false {
+        didSet { if isOpen != oldValue { onOpenChanged?() } }
+    }
+    /// Whenever it opens or closes.
+    var onOpenChanged: (() -> Void)?
     /// Pinned: clicking elsewhere doesn't close it (Esc, pushing up and the menu
     /// still do). Remembered until unpinned, across closes and launches.
     private var isPinned = UserDefaults.standard.bool(forKey: PanelController.pinnedKey) {
