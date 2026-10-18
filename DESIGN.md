@@ -17,7 +17,11 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 - Centered below the menu bar, up to 1000 × 320 pt, on the display the pointer is on. Slides out from under the menu bar.
 - Opens by pulling down at the top screen edge (two fingers down ~40 pt, or 2 wheel clicks toward you, whatever the natural-scrolling setting), from the menu bar item, or by holding a drag at the top edge for half a second (not within 100 pt of the corners, where hot corners live).
 - Closes on a click outside it, Esc, pushing up at the top edge, or the menu bar item. A press outside that turns into dragging a file or text keeps it open, so you can drag things into it.
+- A pin button (top right) stops clicks elsewhere from closing it; Esc, pushing up and the menu item still do. The pin is remembered until you unpin it, across closes and launches.
 - Takes keys (Esc, ⌘⌫, Space) without taking focus from the app you're in.
+- Dropping an item from the panel into another app brings that app to the front, so typing goes where the item landed, and closes the panel unless it's pinned.
+- Space previews the selected item in Seashell's own preview window below the panel (a Quick Look view, not the system Quick Look window, which misbehaves for an app that's never active). Space or Esc closes it; arrows move through items and the preview follows.
+- A close button (top right, next to the pin) closes the panel, pinned or not.
 - Until Clipboard and Notes exist, Stash fills the panel.
 - Dropping onto the menu bar icon stashes into `Main`.
 
@@ -41,6 +45,8 @@ Rules:
 
 - No modifier keys change behaviour. The drop zone decides.
 - To take a file out of Stash for good: drag it out (a copy lands), then right-click → Delete.
+- In the panel, text shows as a note card (two tiles wide) with its first lines and a link as a card with its title and site; hovering shows the full text or address. Files and folders show thumbnails.
+- Text (`.txt` up to 1 MB) and links (`.webloc`) drag out as their content — the words or the address — so they drop into text fields and browsers. Finder still gets the file: it's a file promise that Seashell writes on drop.
 - Any file or folder over 1 GB going into Stash asks first — everything in Stash uploads to iCloud and counts against its storage.
 - Moving into Stash from another volume is copy → verify → delete the original, like Finder.
 - Stashed text is named by its first few words (`Recently, I lived for a few.txt`, at most 6 words and 40 characters), or `Snippet 2026-10-17 0942.txt` when there are none.
@@ -78,7 +84,9 @@ Rules:
 ~/Library/Application Support/Seashell/   ← this Mac only
 ├── clipboard.json                    ← Copy/Cut items: security bookmarks + text
 ├── Held/                             ← local copies of promised files, links and image data in Copy/Cut
-└── settings.json
+└── settings.json                     ← larger settings (Milestone 7)
+
+Small per-Mac preferences such as the panel's pin live in UserDefaults.
 
 ~/Library/Logs/Seashell/Seashell.log      ← readable log for testing
 ```

@@ -33,6 +33,32 @@ struct PanelGeometryTests {
         #expect(PanelGeometry.hiddenFrame(for: frame) == CGRect(x: 100, y: 820, width: 1000, height: 320))
     }
 
+    @Test func previewSitsBelowPanel() {
+        let visible = CGRect(x: 47, y: 0, width: 3393, height: 1410)
+        let panel = PanelGeometry.frame(in: visible)
+        let preview = PanelGeometry.previewFrame(below: panel, in: visible)
+        #expect(preview.size == CGSize(width: 720, height: 480))
+        #expect(preview.midX == panel.midX)
+        #expect(preview.maxY == panel.minY - 16)
+    }
+
+    @Test func previewShrinksOnShortScreen() {
+        let visible = CGRect(x: 0, y: 0, width: 1512, height: 700)
+        let panel = PanelGeometry.frame(in: visible)  // leaves 700 − 8 − 320 below
+        let preview = PanelGeometry.previewFrame(below: panel, in: visible)
+        #expect(preview.height == panel.minY - 32)
+        #expect(preview.minY == 16)
+    }
+
+    @Test func previewOverlapsWhenNoRoom() {
+        let visible = CGRect(x: 0, y: 0, width: 1000, height: 420)
+        let panel = PanelGeometry.frame(in: visible)
+        let preview = PanelGeometry.previewFrame(below: panel, in: visible)
+        #expect(preview.height == PanelGeometry.previewMinHeight)
+        #expect(preview.minY == 16)
+        #expect(visible.contains(preview))
+    }
+
     @Test func topEdge() {
         let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
         #expect(PanelGeometry.isAtTopEdge(CGPoint(x: 700, y: 982), screenFrame: screen))

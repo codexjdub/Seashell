@@ -8,13 +8,32 @@ public struct Shelf: Identifiable, Hashable, Sendable {
 }
 
 public struct StashItem: Identifiable, Hashable, Sendable {
+    public enum Kind: Sendable {
+        case file
+        /// A real folder. Packages such as apps count as files.
+        case folder
+        /// A `.txt`: dragged out as its text, so it can go into text fields.
+        case text
+        /// A `.webloc`: dragged out as its address.
+        case link
+    }
+
     public let url: URL
-    /// A real folder. Packages such as apps count as files.
-    public let isFolder: Bool
+    public let kind: Kind
     /// Folder it came from, if Put Back is possible.
     public let origin: String?
     public var id: URL { url }
     public var name: String { url.lastPathComponent }
+    public var isFolder: Bool { kind == .folder }
+
+    static func kind(of url: URL, isDirectory: Bool, isPackage: Bool) -> Kind {
+        if isDirectory, !isPackage { return .folder }
+        switch url.pathExtension.lowercased() {
+        case "txt": return .text
+        case "webloc": return .link
+        default: return .file
+        }
+    }
 }
 
 public enum ShelfError: LocalizedError, Equatable {
@@ -67,7 +86,7 @@ public struct StashLibrary: Sendable {
         return (unlisted + listed).map { url in
             let values = try? url.resourceValues(forKeys: keys)
             return StashItem(url: url,
-                             isFolder: values?.isDirectory == true && values?.isPackage != true,
+                             kind: StashItem.kind(of: url, isDirectory: values?.isDirectory == true, isPackage: values?.isPackage == true),
                              origin: manifest.origins[url.lastPathComponent])
         }
     }

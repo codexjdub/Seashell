@@ -34,9 +34,13 @@ public final class StashStore {
         itemsByShelf[shelf.name] ?? []
     }
 
+    /// Re-reads the disk. Only real differences are published, so views don't
+    /// redraw (and lose their selection) each time Finder touches a hidden file.
     public func reload() {
-        shelves = library.shelves()
-        itemsByShelf = Dictionary(uniqueKeysWithValues: shelves.map { ($0.name, library.items(in: $0)) })
+        let newShelves = library.shelves()
+        let newItems = Dictionary(uniqueKeysWithValues: newShelves.map { ($0.name, library.items(in: $0)) })
+        if newShelves != shelves { shelves = newShelves }
+        if newItems != itemsByShelf { itemsByShelf = newItems }
         pruneVanishedEntries()
     }
 

@@ -28,6 +28,21 @@ public enum PanelGeometry {
         frame.offsetBy(dx: 0, dy: frame.height)
     }
 
+    public static let previewMaxSize = CGSize(width: 720, height: 480)
+    public static let previewMinHeight: CGFloat = 200
+
+    /// The preview window: centered below the panel, as big as fits up to
+    /// `previewMaxSize`. If there's too little room below, it sits at the bottom
+    /// of the screen and overlaps the panel.
+    public static func previewFrame(below panel: CGRect, in visibleFrame: CGRect) -> CGRect {
+        let width = min(previewMaxSize.width, panel.width, visibleFrame.width - 2 * margin)
+        let room = panel.minY - visibleFrame.minY - 2 * margin
+        let height = min(previewMaxSize.height, max(room, previewMinHeight), visibleFrame.height - 2 * margin)
+        let x = min(max(panel.midX - width / 2, visibleFrame.minX + margin), visibleFrame.maxX - margin - width)
+        let y = max(panel.minY - margin - height, visibleFrame.minY + margin)
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
     /// Whether `point` is on the screen's top edge. `screenFrame` is the whole screen.
     public static func isAtTopEdge(_ point: CGPoint, screenFrame: CGRect) -> Bool {
         point.x >= screenFrame.minX && point.x < screenFrame.maxX

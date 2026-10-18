@@ -21,7 +21,10 @@ final class StashDropper {
 
     /// Answer `move` only for files: Finder leaves the moving to us. A text
     /// source such as TextEdit would delete the dragged text on `move`.
+    /// Items dragged out of Seashell's own grid are already stashed: refused here
+    /// (moving them between shelves is the shelf tabs' job).
     static func operation(for info: any NSDraggingInfo) -> NSDragOperation {
+        if info.draggingSource is StashGridView { return [] }
         let offered = info.draggingSourceOperationMask
         let hasFiles = info.draggingPasteboard.canReadObject(forClasses: [NSURL.self],
                                                              options: [.urlReadingFileURLsOnly: true])
@@ -112,23 +115,13 @@ final class StashDropper {
     }
 
     private func confirmLarge(_ file: URL, size: Int64) -> Bool {
-        NSApp.activate()
-        let alert = NSAlert()
-        alert.messageText = "Stash “\(file.lastPathComponent)”?"
-        alert.informativeText = "It’s \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)). "
-            + "Everything in Stash uploads to iCloud and counts against your iCloud storage."
-        alert.addButton(withTitle: "Stash")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+        Alerts.confirm("Stash “\(file.lastPathComponent)”?",
+                       detail: "It’s \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)). "
+                           + "Everything in Stash uploads to iCloud and counts against your iCloud storage.",
+                       confirm: "Stash")
     }
 
     private func report(_ message: String, _ error: any Error) {
-        Log.error("\(message): \(error.localizedDescription)")
-        NSApp.activate()
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = message
-        alert.informativeText = error.localizedDescription
-        alert.runModal()
+        Alerts.showError(message, error)
     }
 }

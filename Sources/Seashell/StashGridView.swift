@@ -1,0 +1,279 @@
+import AppKit
+import QuickLookThumbnailing
+import SeashellCore
+
+/// The grid of items in a shelf. Handles the keyboard (Space, ⌘⌫, ⌘O, ⌘A),
+/// double-click, and selecting what was right-clicked. What those actions do is
+/// up to the controller.
+@MainActor
+final class StashGridView: NSCollectionView {
+    var onOpen: (() -> Void)?
+    var onDelete: (() -> Void)?
+    var onTogglePreview: (() -> Void)?
+    var contextMenu: (() -> NSMenu?)?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        switch (event.keyCode, modifiers) {
+        case (49, []): onTogglePreview?()          // Space
+        case (51, [.command]): onDelete?()         // ⌘⌫
+        case (31, [.command]): onOpen?()           // ⌘O
+        default: super.keyDown(with: event)        // ⌘A and arrows are handled by NSCollectionView
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        if event.clickCount == 2, indexPathForItem(at: convert(event.locationInWindow, from: nil)) != nil {
+            onOpen?()
+        }
+    }
+
+    /// Right-clicking an item that isn't selected selects just that item first, like Finder.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let indexPath = indexPathForItem(at: convert(event.locationInWindow, from: nil)) else { return nil }
+        if !selectionIndexPaths.contains(indexPath) {
+            deselectAll(nil)
+            selectItems(at: [indexPath], scrollPosition: [])
+        }
+        return contextMenu?()
+    }
+}
+
+/// One item in the grid. Files and folders show a thumbnail and their name.
+/// Text shows as a note card with its first lines; a link as a card with its
+/// title and site. A cloud badge marks items that are only in iCloud.
+@MainActor
+final class StashItemCell: NSCollectionViewItem {
+    static let identifier = NSUserInterfaceItemIdentifier("StashItemCell")
+    static let iconSize: CGFloat = 56
+    static let tileSize = NSSize(width: 92, height: 104)
+    /// Text cards span two tiles, to fit about three times as much text.
+    static let textTileWidth: CGFloat = 190
+
+    // Files and folders
+    private let icon = NSImageView()
+    // Labels let the mouse through: AppKit makes wrapping labels selectable, and a
+    // selectable label would start a text selection instead of dragging the item.
+    private let name = PassThroughLabel(wrappingLabelWithString: "")
+    // Text
+    private let noteCard = CardView(color: .systemYellow)
+    private let noteText = PassThroughLabel(wrappingLabelWithString: "")
+    // Links
+    private let linkCard = CardView(color: .systemBlue)
+    private let linkSymbol = NSImageView()
+    private let linkTitle = PassThroughLabel(wrappingLabelWithString: "")
+    private let linkSite = PassThroughLabel(labelWithString: "")
+
+    private let cloudBadge = NSImageView()
+    private var shownURL: URL?
+
+    override func loadView() {
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 8
+
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        name.font = .systemFont(ofSize: 11)
+        name.preferredMaxLayoutWidth = StashItemCell.tileSize.width - 8
+        name.alignment = .center
+        // Truncating line-break modes turn wrapping off in AppKit, so wrap by
+        // word and let the last visible line end in "…".
+        name.maximumNumberOfLines = 2
+        name.lineBreakMode = .byWordWrapping
+        name.cell?.truncatesLastVisibleLine = true
+
+        noteText.font = .systemFont(ofSize: 10)
+        noteText.textColor = .labelColor
+        noteText.maximumNumberOfLines = 7
+        noteText.lineBreakMode = .byWordWrapping
+        noteText.cell?.truncatesLastVisibleLine = true
+        noteText.preferredMaxLayoutWidth = StashItemCell.textTileWidth - 22  // card inset 10, padding 12
+
+        linkSymbol.image = NSImage(systemSymbolName: "link", accessibilityDescription: "Link")
+        linkSymbol.symbolConfiguration = .init(pointSize: 18, weight: .medium)
+        linkSymbol.contentTintColor = .systemBlue
+        linkTitle.font = .systemFont(ofSize: 11, weight: .semibold)
+        linkTitle.alignment = .center
+        linkTitle.maximumNumberOfLines = 3
+        linkTitle.lineBreakMode = .byWordWrapping
+        linkTitle.cell?.truncatesLastVisibleLine = true
+        linkTitle.preferredMaxLayoutWidth = 72
+        linkSite.font = .systemFont(ofSize: 10)
+        linkSite.textColor = .secondaryLabelColor
+        linkSite.alignment = .center
+        linkSite.lineBreakMode = .byTruncatingMiddle
+
+        cloudBadge.image = NSImage(systemSymbolName: "icloud.and.arrow.down", accessibilityDescription: "In iCloud only")
+        cloudBadge.contentTintColor = .secondaryLabelColor
+
+        Self.add([noteText], to: noteCard)
+        Self.add([linkSymbol, linkTitle, linkSite], to: linkCard)
+        Self.add([icon, name, noteCard, linkCard, cloudBadge], to: view)
+        NSLayoutConstraint.activate([
+            icon.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
+            icon.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            icon.widthAnchor.constraint(equalToConstant: Self.iconSize),
+            icon.heightAnchor.constraint(equalToConstant: Self.iconSize),
+            name.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 4),
+            name.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
+            name.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
+
+            // Cards fill the tile, inset so the selection highlight shows around them.
+            noteCard.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
+            noteCard.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -5),
+            noteCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 5),
+            noteCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -5),
+            noteText.topAnchor.constraint(equalTo: noteCard.topAnchor, constant: 6),
+            noteText.leadingAnchor.constraint(equalTo: noteCard.leadingAnchor, constant: 6),
+            noteText.trailingAnchor.constraint(equalTo: noteCard.trailingAnchor, constant: -6),
+            noteText.bottomAnchor.constraint(lessThanOrEqualTo: noteCard.bottomAnchor, constant: -6),
+
+            linkCard.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
+            linkCard.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -5),
+            linkCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 5),
+            linkCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -5),
+            linkSymbol.topAnchor.constraint(equalTo: linkCard.topAnchor, constant: 10),
+            linkSymbol.centerXAnchor.constraint(equalTo: linkCard.centerXAnchor),
+            linkTitle.topAnchor.constraint(equalTo: linkSymbol.bottomAnchor, constant: 6),
+            linkTitle.leadingAnchor.constraint(equalTo: linkCard.leadingAnchor, constant: 5),
+            linkTitle.trailingAnchor.constraint(equalTo: linkCard.trailingAnchor, constant: -5),
+            linkSite.topAnchor.constraint(greaterThanOrEqualTo: linkTitle.bottomAnchor, constant: 2),
+            linkSite.bottomAnchor.constraint(equalTo: linkCard.bottomAnchor, constant: -6),
+            linkSite.leadingAnchor.constraint(equalTo: linkCard.leadingAnchor, constant: 4),
+            linkSite.trailingAnchor.constraint(equalTo: linkCard.trailingAnchor, constant: -4),
+
+            cloudBadge.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
+            cloudBadge.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
+            cloudBadge.widthAnchor.constraint(equalToConstant: 16),
+            cloudBadge.heightAnchor.constraint(equalToConstant: 16),
+        ])
+        self.view = view
+        imageView = icon
+        textField = name
+    }
+
+    override var isSelected: Bool {
+        didSet {
+            view.layer?.backgroundColor = isSelected ? NSColor.selectedContentBackgroundColor.withAlphaComponent(0.35).cgColor : nil
+        }
+    }
+
+    func configure(with item: StashItem, thumbnails: ThumbnailLoader) {
+        shownURL = item.url
+        let cloudOnly = CloudStatus.state(of: item.url) == .cloudOnly
+        cloudBadge.isHidden = !cloudOnly
+        let title = item.url.deletingPathExtension().lastPathComponent
+
+        switch item.kind {
+        case .text:
+            show(.text)
+            let preview = ItemContent.preview(of: item.url, maxCharacters: 1000)
+            noteText.stringValue = preview.map { String($0.prefix(400)) } ?? title
+            view.toolTip = preview ?? (cloudOnly ? "\(title) (in iCloud)" : title)
+        case .link:
+            show(.link)
+            let link = ItemContent.link(of: item.url)
+            linkTitle.stringValue = title
+            linkSite.stringValue = link?.host(percentEncoded: false)?.replacingOccurrences(of: "www.", with: "") ?? ""
+            view.toolTip = link?.absoluteString ?? title
+        case .file, .folder:
+            show(.file)
+            name.stringValue = item.name
+            view.toolTip = item.name
+            icon.image = thumbnails.cached(for: item.url) ?? NSWorkspace.shared.icon(forFile: item.url.path(percentEncoded: false))
+            thumbnails.load(item.url, size: Self.iconSize, scale: view.window?.backingScaleFactor ?? 2) { [weak self] image in
+                guard let self, self.shownURL == item.url else { return }
+                self.icon.image = image
+            }
+        }
+    }
+
+    private func show(_ kind: StashItem.Kind) {
+        icon.isHidden = kind == .text || kind == .link
+        if icon.isHidden { icon.image = nil }  // a reused tile may still hold another file's thumbnail
+        name.isHidden = icon.isHidden
+        noteCard.isHidden = kind != .text
+        linkCard.isHidden = kind != .link
+    }
+
+    /// What a drag shows. macOS builds it from the icon and name by default;
+    /// text and links show their card instead.
+    override var draggingImageComponents: [NSDraggingImageComponent] {
+        let card: NSView? = !noteCard.isHidden ? noteCard : (!linkCard.isHidden ? linkCard : nil)
+        guard let card, let rep = card.bitmapImageRepForCachingDisplay(in: card.bounds) else {
+            return super.draggingImageComponents
+        }
+        card.cacheDisplay(in: card.bounds, to: rep)
+        let image = NSImage(size: card.bounds.size)
+        image.addRepresentation(rep)
+        let component = NSDraggingImageComponent(key: .icon)
+        component.contents = image
+        component.frame = card.frame
+        return [component]
+    }
+
+    private static func add(_ subviews: [NSView], to parent: NSView) {
+        for subview in subviews {
+            subview.translatesAutoresizingMaskIntoConstraints = false
+            parent.addSubview(subview)
+        }
+    }
+}
+
+/// A rounded, tinted card. Drawn rather than layer-styled, so it can be
+/// captured for a drag image and follows light and dark mode.
+final class CardView: NSView {
+    private let color: NSColor
+
+    init(color: NSColor) {
+        self.color = color
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Clicks and drags go to the tile underneath, which the grid handles.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
+        color.withAlphaComponent(0.18).setFill()
+        path.fill()
+        color.withAlphaComponent(0.45).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+}
+
+/// Quick Look thumbnails, cached per file and modification date.
+@MainActor
+final class ThumbnailLoader {
+    private let cache = NSCache<NSString, NSImage>()
+
+    func cached(for url: URL) -> NSImage? {
+        cache.object(forKey: key(for: url) as NSString)
+    }
+
+    func load(_ url: URL, size: CGFloat, scale: CGFloat, completion: @escaping @MainActor (NSImage) -> Void) {
+        let key = key(for: url)
+        if cache.object(forKey: key as NSString) != nil { return }
+        let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: size, height: size),
+                                                   scale: scale, representationTypes: .all)
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] representation, _ in
+            guard let cgImage = representation?.cgImage else { return }
+            let image = NSImage(cgImage: cgImage, size: NSSize(width: size, height: size))
+            Task { @MainActor in
+                self?.cache.setObject(image, forKey: key as NSString)
+                completion(image)
+            }
+        }
+    }
+
+    private func key(for url: URL) -> String {
+        let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)?.timeIntervalSince1970 ?? 0
+        return "\(url.path(percentEncoded: false))|\(modified)"
+    }
+}

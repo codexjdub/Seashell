@@ -62,6 +62,7 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
     }
 
     @objc private func showStash() {
+        Log.info("Menu: Show Stash in Finder")
         NSWorkspace.shared.open(store.library.stash)
     }
 

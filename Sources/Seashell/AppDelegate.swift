@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.store = store
 
         let dropper = StashDropper(mover: mover)
-        let panel = PanelController(store: store, dropper: dropper)
+        let panel = PanelController(store: store, mover: mover, dropper: dropper)
         self.panel = panel
         menuBar = MenuBarController(store: store, dropper: dropper, panel: panel)
         panel.ignoresClick = { [weak self] point in self?.menuBar?.isOnIcon(point) ?? false }
