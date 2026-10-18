@@ -165,7 +165,7 @@ final class StashItemCell: NSCollectionViewItem {
         let tile = Self.tileSize
         iconWidth?.constant = Self.iconSize
         iconHeight?.constant = Self.iconSize
-        name.font = UIScale.font(11)
+        name.font = UIScale.font(12)
         name.preferredMaxLayoutWidth = tile.width - 8
         noteText.font = UIScale.font(13)  // same as the note editor
         noteText.preferredMaxLayoutWidth = Self.textTileWidth - 22  // card inset 10, padding 12
