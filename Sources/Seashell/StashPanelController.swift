@@ -11,6 +11,10 @@ final class StashPanelController: NSViewController {
     /// Called when items dragged out of the grid were taken by a drop, with
     /// where it happened (screen coordinates).
     var onDraggedOut: ((NSPoint) -> Void)?
+    /// A tab dragged out of the panel: that shelf, and where it was let go.
+    var onTearOff: ((Shelf, NSPoint) -> Void)?
+    /// A shelf renamed here: its old and new names.
+    var onRenamed: ((String, String) -> Void)?
 
     private let store: StashStore
     private let mover: FileMover
@@ -195,6 +199,10 @@ final class StashPanelController: NSViewController {
                 button.operation = { [weak self] info in self?.dropOperation(info, onto: shelf) ?? [] }
                 button.onDrop = { [weak self] info in self?.drop(info, onto: shelf) ?? false }
                 button.onReorder = { [weak self] name, after in self?.moveShelf(named: name, nextTo: shelf, after: after) }
+                button.onTearOff = { [weak self] point in
+                    self?.note("tab “\(shelf.name)” torn off")
+                    self?.onTearOff?(shelf, point)
+                }
                 button.menu = shelf.isDefault ? nil : tabMenu(for: shelf)
                 buttons.append(button)
             }
@@ -257,6 +265,7 @@ final class StashPanelController: NSViewController {
         do {
             let renamed = try store.library.renameShelf(shelf, to: newName)
             if currentShelfName == name { currentShelfName = renamed.name }
+            onRenamed?(name, renamed.name)
             store.reload()
         } catch {
             Alerts.showError("Couldn’t rename “\(name)”", error)
@@ -444,10 +453,10 @@ extension StashPanelController: NSCollectionViewDataSource, NSCollectionViewDele
 }
 
 /// A shelf tab: click to show it; drop files or text on it to stash there, or
-/// drop items from the grid on it to move them there.
+/// items from the grid to move them there. Dragging the tab onto another tab
+/// reorders the shelves (all but Main, which stays first); dragging it out of
+/// the panel tears the shelf off into its own window.
 @MainActor
-/// A shelf tab. Items dropped on it go into that shelf, and dragging the tab
-/// itself onto another tab reorders the shelves (all but Main, which stays first).
 final class ShelfTabButton: NSButton, NSDraggingSource {
     /// What a dragged tab carries: its shelf's name. Only Seashell reads it.
     static let shelfType = NSPasteboard.PasteboardType("io.github.codexjdub.seashell.shelf")
@@ -457,6 +466,8 @@ final class ShelfTabButton: NSButton, NSDraggingSource {
     var onDrop: ((any NSDraggingInfo) -> Bool)?
     /// A tab dropped here: its shelf's name, and whether it goes after this tab.
     var onReorder: ((_ name: String, _ after: Bool) -> Void)?
+    /// This tab dropped outside the panel: where, on screen.
+    var onTearOff: ((NSPoint) -> Void)?
     /// Where a dragged tab would land: true after this one, false before it.
     private var insertAfter: Bool? {
         didSet { needsDisplay = true }
@@ -480,7 +491,7 @@ final class ShelfTabButton: NSButton, NSDraggingSource {
     /// A click selects the tab; moving a few points first drags it instead.
     override func mouseDown(with event: NSEvent) {
         // Control-click still opens the tab's menu.
-        guard !shelf.isDefault, !event.modifierFlags.contains(.control), let window else { return super.mouseDown(with: event) }
+        guard !event.modifierFlags.contains(.control), let window else { return super.mouseDown(with: event) }
         let start = event.locationInWindow
         while let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {
             if next.type == .leftMouseUp {
@@ -511,6 +522,16 @@ final class ShelfTabButton: NSButton, NSDraggingSource {
         context == .withinApplication ? .move : []
     }
 
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
+        // Let go outside the panel, it becomes a window there: no sliding back.
+        session.animatesToStartingPositionsOnCancelOrFail = false
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        guard operation.isEmpty, let window, !window.frame.contains(screenPoint) else { return }
+        onTearOff?(screenPoint)
+    }
+
     // MARK: Drops
 
     private static func draggedShelf(_ info: any NSDraggingInfo) -> String? {
@@ -518,8 +539,9 @@ final class ShelfTabButton: NSButton, NSDraggingSource {
     }
 
     /// Nothing goes before Main.
+    /// Main can be dragged out to tear it off, but not reordered.
     private func reorder(_ info: any NSDraggingInfo, name: String) -> NSDragOperation {
-        guard name != shelf.name else {
+        guard name != shelf.name, name != SeashellFolders.defaultShelfName else {
             insertAfter = nil
             return []
         }

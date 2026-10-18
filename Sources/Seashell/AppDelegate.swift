@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let edgeScrollWatcher = EdgeScrollWatcher()
     private let optionShakeWatcher = OptionShakeWatcher()
     private var grabShelf: GrabShelf?
+    private var tearOffs: TearOffShelves?
     private let settingsWindow = SettingsWindow()
     private var isSecondCopy = false
 
@@ -65,11 +66,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.grabShelf = grabShelf
         grabShelf.onMore = { panel.open(on: NSScreen.containing($0), reason: "More… on the grab shelf") }
         grabShelf.onSettings = { [settingsWindow] in settingsWindow.show() }
-        grabShelf.onDraggedOut = { point in
-            // Typing should go where the item landed.
-            guard let target = PanelController.app(at: point), target != NSRunningApplication.current else { return }
-            target.activate()
-        }
+        grabShelf.onDraggedOut = { Self.bringForwardApp(at: $0) }
+
+        let tearOffs = TearOffShelves(store: store, mover: mover, dropper: dropper)
+        self.tearOffs = tearOffs
+        tearOffs.onDraggedOut = { Self.bringForwardApp(at: $0) }
+        tearOffs.onSettings = { [settingsWindow] in settingsWindow.show() }
+        panel.onTearOff = { shelf, point in tearOffs.open(shelf, at: point) }
+        panel.onShelfRenamed = { old, new in tearOffs.rename(from: old, to: new) }
+        tearOffs.restore()
         optionShakeWatcher.onShake = { point in
             guard AppSettings.shared.allowsShake() else { return }
             grabShelf.toggle(at: point)
@@ -93,6 +98,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !isSecondCopy else { return }
         panel?.saveNotes()
         Log.info("Seashell quit")
+    }
+
+    /// After an item is dropped into another app, typing should go there.
+    private static func bringForwardApp(at point: NSPoint) {
+        guard let target = PanelController.app(at: point), target != NSRunningApplication.current else { return }
+        target.activate()
     }
 
     private static func summary(of store: StashStore) -> String {

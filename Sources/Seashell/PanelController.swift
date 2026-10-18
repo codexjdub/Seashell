@@ -23,6 +23,16 @@ final class PanelController: NSObject {
     var ignoresClick: ((NSPoint) -> Bool)?
     /// ⌘, in the panel.
     var openSettings: (() -> Void)?
+    /// A shelf's tab dragged out of the panel.
+    var onTearOff: ((Shelf, NSPoint) -> Void)? {
+        get { stash.onTearOff }
+        set { stash.onTearOff = newValue }
+    }
+    /// A shelf renamed in the panel: its old and new names.
+    var onShelfRenamed: ((String, String) -> Void)? {
+        get { stash.onRenamed }
+        set { stash.onRenamed = newValue }
+    }
 
     private let stash: StashPanelController
     private let notes: NotesPanelController
