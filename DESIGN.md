@@ -38,6 +38,7 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
   - Ask before stashing: Over 500 MB, Over 1 GB (default), Over 5 GB, or Never.
   - Shake to show the shelf: Off, Gentle (2 swings of 15 pt), Normal (3 of 20 pt in 0.6 s, the default), Firm (4 of 30 pt in 0.8 s).
   - Ignore shakes in: a list of apps (+ chooses from Applications, − removes) where shakes do nothing, for both the drop shelf and the grab shelf, judged by the app in front. Drawing apps and games move the pointer fast on purpose. The menu bar menu also has "Ignore Shakes in <app>" for the app you're in.
+  - Keyboard shortcut: ⌃⌥S (default), ⌃⌥⌘S, ⌃⌥Z or Off. Opens and closes the panel from any app; a Carbon hot key, so no Accessibility permission. The menu bar menu shows it beside Open Seashell.
   - Pull down at the top edge to open the panel: on by default. Pushing up still closes it, and holding a drag at the top edge still opens it.
 - Edit shortcuts (⌘X ⌘C ⌘V ⌘A ⌘Z ⇧⌘Z) are wired up by hand: a menu bar app has no Edit menu. In the editor they use the system clipboard as usual.
 - Dropping onto the menu bar icon stashes into `Main`.
@@ -66,6 +67,8 @@ Rules:
 
 - No modifier keys change behaviour. The drop zone decides.
 - To take a file out of Stash for good: drag it out (a copy lands), then right-click → Delete.
+- Copy, Paste, Rename… and Share (the system submenu: AirDrop, Mail, Messages…) are in an item's right-click menu, in the panel and tear-off shelves; ⌘C and ⌘V work too. Copy puts a file on the clipboard as the file, a text snippet as its text and a link as its address. Paste stashes what the clipboard holds like a drop, except files are copied in and the originals stay. Rename keeps the item's place and Put Back origin.
+- Tips: a welcome window on first launch shows the gestures (pull down, shake while dragging, ⌥-shake, the keyboard shortcut, tearing off a shelf, dropping on the menu bar icon); "Tips…" in the menu bar menu shows it again.
 - A promised file (Photos, Mail, pictures from web pages) goes into the shelf only once it has content that has stopped growing for half a second. Chrome and other Chromium browsers use an older promise that reports the file before writing it. If it's still empty after 15 s, Seashell downloads the picture from the web address the drag carried (if that's really a picture), or else saves the picture data the drag carried as a PNG; failing both, it says so. An empty file is never stashed.
 - In the panel, every item takes one tile. Text shows as a note card with its first lines (up to five at 13 pt), on the faint note yellow and a link as a neutral card with a blue link symbol, its title and site (a blue card would look selected); hovering shows the full text or address. Files and folders show thumbnails.
 - Text (`.txt` up to 1 MB) and links (`.webloc`) drag out as their content — the words or the address — so they drop into text fields and browsers. Finder still gets the file: it's a file promise that Seashell writes on drop.

@@ -9,13 +9,15 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
     private let dropper: StashDropper
     private let panel: PanelController
     private let settings: SettingsWindow
+    private let tips: TipsWindow
     private let menu = NSMenu()
 
-    init(store: StashStore, dropper: StashDropper, panel: PanelController, settings: SettingsWindow) {
+    init(store: StashStore, dropper: StashDropper, panel: PanelController, settings: SettingsWindow, tips: TipsWindow) {
         self.store = store
         self.dropper = dropper
         self.panel = panel
         self.settings = settings
+        self.tips = tips
         super.init()
         statusItem.button?.image = MenuBarIcon.image
         menu.delegate = self
@@ -71,6 +73,9 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
             menu.addItem(item)
         }
         menu.addItem(.separator())
+        let tipsItem = NSMenuItem(title: "Tips…", action: #selector(openTips), keyEquivalent: "")
+        tipsItem.target = self
+        menu.addItem(tipsItem)
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -81,6 +86,10 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         guard let id = sender.representedObject as? String else { return }
         Log.info("Menu: \(sender.title) \(sender.state == .on ? "off" : "on")")
         AppSettings.shared.setShakesIgnored(sender.state != .on, in: id)
+    }
+
+    @objc private func openTips() {
+        tips.show()
     }
 
     @objc private func openSettings() {

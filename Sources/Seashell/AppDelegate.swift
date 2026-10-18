@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var tearOffs: TearOffShelves?
     private let panelHotKey = HotKey(id: 1)
     private let settingsWindow = SettingsWindow()
+    private let tipsWindow = TipsWindow()
     private var isSecondCopy = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -51,7 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.notesStore = notesStore
         let panel = PanelController(store: store, notesStore: notesStore, mover: mover, dropper: dropper)
         self.panel = panel
-        menuBar = MenuBarController(store: store, dropper: dropper, panel: panel, settings: settingsWindow)
+        menuBar = MenuBarController(store: store, dropper: dropper, panel: panel, settings: settingsWindow, tips: tipsWindow)
+        tipsWindow.onOpenPanel = { panel.open(reason: "tips") }
         panel.openSettings = { [settingsWindow] in settingsWindow.show() }
         panel.ignoresClick = { [weak self] point in self?.menuBar?.isOnIcon(point) ?? false }
         let floatingShelf = FloatingShelf(store: store, dropper: dropper)
@@ -98,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         edgeScrollWatcher.start()
+        tipsWindow.showIfFirstLaunch()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
