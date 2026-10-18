@@ -17,9 +17,10 @@ public enum PanelGeometry {
     /// Stash's share of the width; the rest is Notes.
     public static let defaultSplit: CGFloat = 0.55
     public static let splitRange: ClosedRange<CGFloat> = 0.3...0.75
-    /// The pin-and-close pill beside the panel, with its gap, at Small text.
-    /// The window keeps this much room on both sides, so the panel stays centered.
-    public static let sideColumn: CGFloat = 40
+    /// How far the app icon and the pin-and-close pill stick out past the
+    /// panel's right edge, at Small text. The window keeps this much room on
+    /// both sides, so the panel stays centered.
+    public static let sideColumn: CGFloat = 16
 
     /// The panel itself (not the window around it, which has `sideSpace` more
     /// on each side): centered horizontally, just below the menu bar.

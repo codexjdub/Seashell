@@ -31,11 +31,17 @@ final class PanelController: NSObject {
     /// The yellow of the note cards in Stash, so notes look alike in both.
     private let notesCard = PanelCard(isNotes: true)
     private var splitConstraint: NSLayoutConstraint?
-    /// Sizes around the pin-and-close pill, written at Small and scaled with the text.
+    /// Sizes beside the panel (app icon, pill, buttons), written at Small and scaled with the text.
     private var scaledConstraints: [(constraint: NSLayoutConstraint, base: CGFloat)] = []
     private let pill = NSVisualEffectView()
     private static let pillWidth: CGFloat = 34
     private static let pillButtonSize: CGFloat = 26
+    private static let iconSize: CGFloat = 42
+    /// The icon's frame past the panel's right edge: about a third of the
+    /// visible icon (the artwork leaves a margin inside its frame).
+    private static let iconOverhang: CGFloat = 15
+    /// From the panel's top and bottom edges to the icon and the pill.
+    private static let cornerInset: CGFloat = 6
     private lazy var closeButton: NSButton = {
         let button = PillButton(target: self, action: #selector(closeButtonClicked))
         button.contentTintColor = .secondaryLabelColor
@@ -43,6 +49,15 @@ final class PanelController: NSObject {
         return button
     }()
     private lazy var pinButton: NSButton = PillButton(target: self, action: #selector(togglePin))
+    /// The app icon at the top of the pill; opens Settings.
+    private lazy var iconButton: NSButton = {
+        let button = IconButton(image: NSApp.applicationIconImage, target: self, action: #selector(iconClicked))
+        button.isBordered = false
+        button.imageScaling = .scaleProportionallyUpOrDown
+        button.toolTip = "Seashell Settings"
+        button.setAccessibilityLabel("Seashell Settings")
+        return button
+    }()
     private var clickMonitor: Any?
     private let dragPasteboard = NSPasteboard(name: .drag)
     /// Drag pasteboard change count at a left press outside the panel, until its release.
@@ -72,7 +87,7 @@ final class PanelController: NSObject {
         }
     }
 
-    // The window is wider than the panel: the pill sits outside its right edge,
+    // The window is wider than the panel: the icon and pill stick out past its right edge,
     // and the same room is left empty on the left so the panel stays centered.
 
     private var sideSpace: CGFloat { UIScale.pt(PanelGeometry.sideColumn) }
@@ -315,6 +330,11 @@ final class PanelController: NSObject {
         close(reason: "close button")
     }
 
+    @objc private func iconClicked() {
+        Log.info("Panel: app icon clicked")
+        openSettings?()
+    }
+
     @objc private func togglePin() {
         isPinned.toggle()
         Log.info(isPinned ? "Panel pinned: clicking elsewhere won’t close it" : "Panel unpinned")
@@ -399,9 +419,11 @@ final class PanelController: NSObject {
         return panel
     }
 
-    /// The panel, with the pin-and-close pill just outside its top right
-    /// corner: they act on the whole panel, not on Notes. The window around
-    /// them is see-through, and clicks there go to whatever is underneath.
+    /// The panel, with the app icon over its top right corner like a seal
+    /// (Settings), and pin and close in a small pill over the bottom right
+    /// corner, each about a third outside. They act on the whole panel, not on
+    /// Notes. The window around them is see-through, and clicks there go to
+    /// whatever is underneath.
     private func makeWindowContent(around background: NSView) -> NSView {
         updateCloseButton()
         updatePinButton()
@@ -417,16 +439,19 @@ final class PanelController: NSObject {
         pill.addSubview(buttons)
 
         let container = NSView()
-        for view in [background, pill] {
+        for view in [background, iconButton, pill] {
             view.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(view)
         }
         let side = PanelGeometry.sideColumn
-        let gap = side - Self.pillWidth
         let scaled: [(NSLayoutConstraint, CGFloat)] = [
             (background.leadingAnchor.constraint(equalTo: container.leadingAnchor), side),
             (container.trailingAnchor.constraint(equalTo: background.trailingAnchor), side),
-            (pill.leadingAnchor.constraint(equalTo: background.trailingAnchor), gap),
+            (iconButton.trailingAnchor.constraint(equalTo: background.trailingAnchor), Self.iconOverhang),
+            (iconButton.topAnchor.constraint(equalTo: background.topAnchor), Self.cornerInset),
+            (background.bottomAnchor.constraint(equalTo: pill.bottomAnchor), Self.cornerInset + 4),
+            (iconButton.widthAnchor.constraint(equalToConstant: 0), Self.iconSize),
+            (iconButton.heightAnchor.constraint(equalToConstant: 0), Self.iconSize),
             (pill.widthAnchor.constraint(equalToConstant: 0), Self.pillWidth),
             (pill.heightAnchor.constraint(equalToConstant: 0), 2 * Self.pillButtonSize + 12),
             (pinButton.widthAnchor.constraint(equalToConstant: 0), Self.pillButtonSize),
@@ -439,7 +464,7 @@ final class PanelController: NSObject {
         NSLayoutConstraint.activate(scaledConstraints.map(\.constraint) + [
             background.topAnchor.constraint(equalTo: container.topAnchor),
             background.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            pill.topAnchor.constraint(equalTo: background.topAnchor),
+            pill.centerXAnchor.constraint(equalTo: iconButton.centerXAnchor),
             buttons.centerXAnchor.constraint(equalTo: pill.centerXAnchor),
             buttons.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
         ])
@@ -472,6 +497,12 @@ final class PanelCard: NSView {
         path.lineWidth = 1
         path.stroke()
     }
+}
+
+/// The app icon in the pill: just the image, exactly the size it's given
+/// (buttons otherwise keep a few hidden points above and below).
+final class IconButton: NSButton {
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
 }
 
 /// A round button for the pill beside the panel: a faint gray circle, echoing
