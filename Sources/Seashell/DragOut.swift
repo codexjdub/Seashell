@@ -17,12 +17,12 @@ enum DragOut {
         switch item.kind {
         case .text:
             if let text = ItemContent.text(of: item.url) {
-                return promise(for: item, type: .plainText, content: [.string: text])
+                return promise(for: item.url, type: .plainText, content: [.string: text])
             }
         case .link:
             if let link = ItemContent.link(of: item.url) {
                 let title = item.url.deletingPathExtension().lastPathComponent
-                return promise(for: item, type: .internetLocation,
+                return promise(for: item.url, type: .internetLocation,
                                content: [.URL: link.absoluteString, .string: link.absoluteString, urlNameType: title])
             }
         case .file, .folder:
@@ -31,10 +31,14 @@ enum DragOut {
         return item.url as NSURL
     }
 
-    private static func promise(for item: StashItem, type: UTType,
+    /// A note: its text, plus its `.md` for Finder.
+    static func writer(forNote url: URL, text: String) -> any NSPasteboardWriting {
+        promise(for: url, type: UTType(filenameExtension: "md") ?? .plainText, content: [.string: text])
+    }
+
+    private static func promise(for url: URL, type: UTType,
                                 content: [NSPasteboard.PasteboardType: String]) -> ContentPromise {
-        let provider = ContentPromise(fileType: type.identifier, delegate: promiseWriter)
-        provider.userInfo = item.url
+        let provider = ContentPromise(source: url, fileType: type.identifier, delegate: promiseWriter)
         provider.content = content
         return provider
     }
@@ -42,7 +46,17 @@ enum DragOut {
 
 /// A file promise that also carries the item's content in other types.
 final class ContentPromise: NSFilePromiseProvider {
+    /// The file to copy where it's dropped. Readable from any thread: the
+    /// writer runs on a background queue.
+    nonisolated let source: URL
     var content: [NSPasteboard.PasteboardType: String] = [:]
+
+    init(source: URL, fileType: String, delegate: any NSFilePromiseProviderDelegate) {
+        self.source = source
+        super.init()
+        self.fileType = fileType
+        self.delegate = delegate
+    }
 
     override func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
         super.writableTypes(for: pasteboard) + Array(content.keys)
@@ -54,17 +68,20 @@ final class ContentPromise: NSFilePromiseProvider {
 }
 
 /// Keeps a file promise by copying the stashed item to where it was dropped.
-/// Called on its own queue, off the main thread.
+///
+/// macOS calls these from background threads (for a drop into Seashell itself,
+/// from file coordination's queue), so they're `nonisolated`: otherwise Swift
+/// treats them as main-thread-only, as the AppKit protocol is, and stops the app.
 final class PromiseWriter: NSObject, NSFilePromiseProviderDelegate {
-    private let queue = OperationQueue()
+    private nonisolated let queue = OperationQueue()
 
-    func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
-        (provider.userInfo as? URL)?.lastPathComponent ?? "Untitled"
+    nonisolated func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
+        (provider as? ContentPromise)?.source.lastPathComponent ?? "Untitled"
     }
 
-    func filePromiseProvider(_ provider: NSFilePromiseProvider, writePromiseTo url: URL,
-                             completionHandler: @escaping ((any Error)?) -> Void) {
-        guard let source = provider.userInfo as? URL else {
+    nonisolated func filePromiseProvider(_ provider: NSFilePromiseProvider, writePromiseTo url: URL,
+                                         completionHandler: @escaping ((any Error)?) -> Void) {
+        guard let source = (provider as? ContentPromise)?.source else {
             completionHandler(CocoaError(.fileNoSuchFile))
             return
         }
@@ -77,7 +94,7 @@ final class PromiseWriter: NSObject, NSFilePromiseProviderDelegate {
         }
     }
 
-    func operationQueue(for provider: NSFilePromiseProvider) -> OperationQueue {
+    nonisolated func operationQueue(for provider: NSFilePromiseProvider) -> OperationQueue {
         queue
     }
 }

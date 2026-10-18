@@ -18,6 +18,7 @@ final class StashPanelController: NSViewController {
     private let thumbnails = ThumbnailLoader()
     private let preview = PreviewWindow()
     private let tabs = NSStackView()
+    private let layout = NSCollectionViewFlowLayout()
     private let emptyLabel = PassThroughLabel(labelWithString: "Drop files here, or shake while dragging.")
     private var currentShelfName = SeashellFolders.defaultShelfName
     private var items: [StashItem] = []
@@ -53,7 +54,6 @@ final class StashPanelController: NSViewController {
         header.orientation = .horizontal
         header.spacing = 8
 
-        let layout = NSCollectionViewFlowLayout()
         layout.itemSize = StashItemCell.tileSize
         layout.minimumInteritemSpacing = 6
         layout.minimumLineSpacing = 6
@@ -81,7 +81,6 @@ final class StashPanelController: NSViewController {
         scroll.autohidesScrollers = true
 
         emptyLabel.textColor = .secondaryLabelColor
-        emptyLabel.font = .systemFont(ofSize: 14)
 
         for subview in [header, scroll, emptyLabel] {
             subview.translatesAutoresizingMaskIntoConstraints = false
@@ -90,8 +89,7 @@ final class StashPanelController: NSViewController {
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
-            // Room on the right for the panel's pin and close buttons.
-            header.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -84),
+            header.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -16),
             scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
@@ -101,6 +99,17 @@ final class StashPanelController: NSViewController {
         ])
         view = root
         observeChanges { [weak self] in self?.refresh() }
+        observeChanges { [weak self] in self?.applyTextSize() }
+    }
+
+    /// Re-sizes text, tiles and tabs. Reads the text size, so it runs again when that changes.
+    private func applyTextSize() {
+        _ = TextSizeSetting.shared.size
+        emptyLabel.font = UIScale.font(14)
+        tabButtons.forEach { $0.font = UIScale.font(13) }
+        layout.itemSize = StashItemCell.tileSize
+        layout.invalidateLayout()
+        grid.reloadData()
     }
 
     func willHide() {
@@ -179,6 +188,7 @@ final class StashPanelController: NSViewController {
             tabButtons.forEach { $0.removeFromSuperview() }
             for shelf in shelves {
                 let button = ShelfTabButton(shelf: shelf, target: self, action: #selector(tabClicked))
+                button.font = UIScale.font(13)
                 button.operation = { [weak self] info in self?.dropOperation(info, onto: shelf) ?? [] }
                 button.onDrop = { [weak self] info in self?.drop(info, onto: shelf) ?? false }
                 button.menu = shelf.isDefault ? nil : tabMenu(for: shelf)

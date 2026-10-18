@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBar: MenuBarController?
     private var floatingShelf: FloatingShelf?
     private var panel: PanelController?
+    private var notesStore: NotesStore?
     private let dragWatcher = DragWatcher()
     private let edgeScrollWatcher = EdgeScrollWatcher()
     private var isSecondCopy = false
@@ -37,7 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.store = store
 
         let dropper = StashDropper(mover: mover)
-        let panel = PanelController(store: store, mover: mover, dropper: dropper)
+        let notesStore = NotesStore(library: NotesLibrary(folder: folders.notes))
+        notesStore.startWatching()
+        self.notesStore = notesStore
+        let panel = PanelController(store: store, notesStore: notesStore, mover: mover, dropper: dropper)
         self.panel = panel
         menuBar = MenuBarController(store: store, dropper: dropper, panel: panel)
         panel.ignoresClick = { [weak self] point in self?.menuBar?.isOnIcon(point) ?? false }
@@ -58,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         guard !isSecondCopy else { return }
+        panel?.saveNotes()
         Log.info("Seashell quit")
     }
 

@@ -15,6 +15,7 @@ final class PreviewWindow {
 
     func show(_ url: URL, below panelFrame: NSRect, in visibleFrame: NSRect, level: NSWindow.Level) {
         window.level = NSWindow.Level(rawValue: level.rawValue + 1)
+        title.font = UIScale.font(12, weight: .semibold)
         window.setFrame(PanelGeometry.previewFrame(below: panelFrame, in: visibleFrame), display: false)
         update(url)
         window.orderFront(nil)
@@ -53,7 +54,6 @@ final class PreviewWindow {
         background.layer?.cornerRadius = 16
         background.layer?.masksToBounds = true
 
-        title.font = .systemFont(ofSize: 12, weight: .semibold)
         title.textColor = .secondaryLabelColor
         title.lineBreakMode = .byTruncatingMiddle
         title.alignment = .center

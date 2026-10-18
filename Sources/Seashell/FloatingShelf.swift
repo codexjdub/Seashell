@@ -6,7 +6,8 @@ import SeashellCore
 /// about a second after the mouse is released, whether or not you dropped on it.
 @MainActor
 final class FloatingShelf {
-    private static let size = NSSize(width: 170, height: 110)
+    /// Grows with the text size.
+    private static var size: NSSize { NSSize(width: UIScale.pt(170), height: UIScale.pt(110)) }
 
     private let store: StashStore
     private let dropper: StashDropper
@@ -23,6 +24,7 @@ final class FloatingShelf {
 
     func show(at point: NSPoint) {
         stashZone.reset()
+        panel.setContentSize(Self.size)
         panel.setFrameOrigin(origin(near: point))
         panel.orderFrontRegardless()
         Log.info("Shake: floating shelf shown")
@@ -116,8 +118,6 @@ final class DropZoneView: NSView {
         layer?.borderWidth = 1.5
         layer?.borderColor = NSColor.tertiaryLabelColor.cgColor
 
-        icon.symbolConfiguration = .init(pointSize: 24, weight: .regular)
-        label.font = .systemFont(ofSize: 14, weight: .semibold)
         let stack = NSStackView(views: [icon, label])
         stack.orientation = .vertical
         stack.spacing = 6
@@ -134,6 +134,8 @@ final class DropZoneView: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     func reset() {
+        icon.symbolConfiguration = .init(pointSize: UIScale.pt(24), weight: .regular)
+        label.font = UIScale.font(14, weight: .semibold)
         show(symbol: symbol, text: title)
         setHighlighted(false)
     }

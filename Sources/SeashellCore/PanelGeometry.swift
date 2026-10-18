@@ -13,10 +13,11 @@ public enum PanelGeometry {
     public static let cornerMargin: CGFloat = 100
 
     /// Centered horizontally, just below the menu bar. `visibleFrame` is the
-    /// screen's area without the menu bar and Dock.
-    public static func frame(in visibleFrame: CGRect) -> CGRect {
-        let width = min(maxWidth, visibleFrame.width - 2 * margin)
-        let height = min(height, visibleFrame.height - 2 * margin)
+    /// screen's area without the menu bar and Dock. `scale` follows the text
+    /// size, so bigger text gets a bigger panel, as far as the screen allows.
+    public static func frame(in visibleFrame: CGRect, scale: CGFloat = 1) -> CGRect {
+        let width = min(maxWidth * scale, visibleFrame.width - 2 * margin)
+        let height = min(height * scale, visibleFrame.height - 2 * margin)
         return CGRect(x: visibleFrame.midX - width / 2,
                       y: visibleFrame.maxY - margin / 2 - height,
                       width: width, height: height)

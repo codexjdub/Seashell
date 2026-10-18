@@ -95,7 +95,9 @@ final class StashDropper {
             report("Couldn’t receive the dropped file", error)
             return
         }
-        receiver.receivePromisedFiles(atDestination: incoming, options: [:], operationQueue: promiseQueue) { file, error in
+        // Runs on promiseQueue. Marked @Sendable so Swift doesn't treat it as
+        // main-thread-only (it's written inside a main-actor method) and stop the app.
+        receiver.receivePromisedFiles(atDestination: incoming, options: [:], operationQueue: promiseQueue) { @Sendable file, error in
             Task { @MainActor in
                 if let error {
                     self.report("Couldn’t receive “\(file.lastPathComponent)”", error)

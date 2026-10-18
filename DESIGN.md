@@ -22,7 +22,11 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 - Dropping an item from the panel into another app brings that app to the front, so typing goes where the item landed, and closes the panel unless it's pinned.
 - Space previews the selected item in Seashell's own preview window below the panel (a Quick Look view, not the system Quick Look window, which misbehaves for an app that's never active). Space or Esc closes it; arrows move through items and the preview follows.
 - A close button (top right, next to the pin) closes the panel, pinned or not.
-- Until Clipboard and Notes exist, Stash fills the panel.
+- Stash (55%) and Notes each sit on their own rounded, lightly tinted card with a small gap. The Clipboard becomes a third card with Milestone 4 (on hold).
+- Notes: a list (most recently edited first) beside a plain-text editor; Markdown is kept exactly as typed. The first line is the title, and the file is renamed to match when you leave the note (switch notes, close the panel, quit). Saves 1 s after you stop typing. ⌘N or the pencil adds a selected "New Note" row with the cursor in the editor; it gets a file once you type, and left empty it just disappears. An existing note left empty goes to the Trash. Rows show live titles as you type. Drag a note out as its text (plus a `.md` for Finder); drop text onto the list to start a note.
+- If a note changed on disk since Seashell read it (another Mac, another app), saving writes `Title (edited here).md` instead of overwriting. With no pending edits, the editor just shows the new version.
+- Text size: Small (the original), Medium (default, +15%), Large (+30%), Extra Large (+50%). Set from the menu bar menu (Text Size) or with ⌘+ / ⌘− / ⌘0 in the panel; remembered on this Mac. It scales all of Seashell's text, and tiles, cards, rows, the floating shelf and the panel grow with it (as far as the screen allows). macOS's own menus and alerts follow the system.
+- Edit shortcuts (⌘X ⌘C ⌘V ⌘A ⌘Z ⇧⌘Z) are wired up by hand: a menu bar app has no Edit menu. In the editor they use the system clipboard as usual.
 - Dropping onto the menu bar icon stashes into `Main`.
 
 Shaking the cursor during a drag pops a **floating shelf** near the cursor with three drop zones: Stash, Copy, Cut (Stash only until the Clipboard exists). Its Stash zone saves into the default `Main` shelf. It hides about a second after the mouse is released, whether or not you dropped on it, and never deletes anything.

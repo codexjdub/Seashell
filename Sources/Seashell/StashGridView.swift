@@ -48,10 +48,11 @@ final class StashGridView: NSCollectionView {
 @MainActor
 final class StashItemCell: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("StashItemCell")
-    static let iconSize: CGFloat = 56
-    static let tileSize = NSSize(width: 92, height: 104)
-    /// Text cards span two tiles, to fit about three times as much text.
-    static let textTileWidth: CGFloat = 190
+    // Sizes at the current text size (see UIScale).
+    static var iconSize: CGFloat { UIScale.pt(56) }
+    static var tileSize: NSSize { NSSize(width: UIScale.pt(92), height: UIScale.pt(104)) }
+    /// Text cards span two tiles (plus the gap), to fit about three times as much text.
+    static var textTileWidth: CGFloat { tileSize.width * 2 + 6 }
 
     // Files and folders
     private let icon = NSImageView()
@@ -69,6 +70,8 @@ final class StashItemCell: NSCollectionViewItem {
 
     private let cloudBadge = NSImageView()
     private var shownURL: URL?
+    private var iconWidth: NSLayoutConstraint?
+    private var iconHeight: NSLayoutConstraint?
 
     override func loadView() {
         let view = NSView()
@@ -76,8 +79,6 @@ final class StashItemCell: NSCollectionViewItem {
         view.layer?.cornerRadius = 8
 
         icon.imageScaling = .scaleProportionallyUpOrDown
-        name.font = .systemFont(ofSize: 11)
-        name.preferredMaxLayoutWidth = StashItemCell.tileSize.width - 8
         name.alignment = .center
         // Truncating line-break modes turn wrapping off in AppKit, so wrap by
         // word and let the last visible line end in "…".
@@ -85,23 +86,17 @@ final class StashItemCell: NSCollectionViewItem {
         name.lineBreakMode = .byWordWrapping
         name.cell?.truncatesLastVisibleLine = true
 
-        noteText.font = .systemFont(ofSize: 10)
         noteText.textColor = .labelColor
         noteText.maximumNumberOfLines = 7
         noteText.lineBreakMode = .byWordWrapping
         noteText.cell?.truncatesLastVisibleLine = true
-        noteText.preferredMaxLayoutWidth = StashItemCell.textTileWidth - 22  // card inset 10, padding 12
 
         linkSymbol.image = NSImage(systemSymbolName: "link", accessibilityDescription: "Link")
-        linkSymbol.symbolConfiguration = .init(pointSize: 18, weight: .medium)
         linkSymbol.contentTintColor = .systemBlue
-        linkTitle.font = .systemFont(ofSize: 11, weight: .semibold)
         linkTitle.alignment = .center
-        linkTitle.maximumNumberOfLines = 3
+        linkTitle.maximumNumberOfLines = 2  // at this size, 3 lines would push the site off the card
         linkTitle.lineBreakMode = .byWordWrapping
         linkTitle.cell?.truncatesLastVisibleLine = true
-        linkTitle.preferredMaxLayoutWidth = 72
-        linkSite.font = .systemFont(ofSize: 10)
         linkSite.textColor = .secondaryLabelColor
         linkSite.alignment = .center
         linkSite.lineBreakMode = .byTruncatingMiddle
@@ -112,11 +107,15 @@ final class StashItemCell: NSCollectionViewItem {
         Self.add([noteText], to: noteCard)
         Self.add([linkSymbol, linkTitle, linkSite], to: linkCard)
         Self.add([icon, name, noteCard, linkCard, cloudBadge], to: view)
+        let iconWidth = icon.widthAnchor.constraint(equalToConstant: Self.iconSize)
+        let iconHeight = icon.heightAnchor.constraint(equalToConstant: Self.iconSize)
+        self.iconWidth = iconWidth
+        self.iconHeight = iconHeight
         NSLayoutConstraint.activate([
             icon.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
             icon.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            icon.widthAnchor.constraint(equalToConstant: Self.iconSize),
-            icon.heightAnchor.constraint(equalToConstant: Self.iconSize),
+            iconWidth,
+            iconHeight,
             name.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 4),
             name.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
             name.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
@@ -161,7 +160,23 @@ final class StashItemCell: NSCollectionViewItem {
         }
     }
 
+    /// Fonts and sizes for the current text size; tiles are reconfigured when it changes.
+    private func applyTextSize() {
+        let tile = Self.tileSize
+        iconWidth?.constant = Self.iconSize
+        iconHeight?.constant = Self.iconSize
+        name.font = UIScale.font(11)
+        name.preferredMaxLayoutWidth = tile.width - 8
+        noteText.font = UIScale.font(13)  // same as the note editor
+        noteText.preferredMaxLayoutWidth = Self.textTileWidth - 22  // card inset 10, padding 12
+        linkSymbol.symbolConfiguration = .init(pointSize: UIScale.pt(18), weight: .medium)
+        linkTitle.font = UIScale.font(14, weight: .semibold)
+        linkTitle.preferredMaxLayoutWidth = tile.width - 20
+        linkSite.font = UIScale.font(13)
+    }
+
     func configure(with item: StashItem, thumbnails: ThumbnailLoader) {
+        applyTextSize()
         shownURL = item.url
         let cloudOnly = CloudStatus.state(of: item.url) == .cloudOnly
         cloudBadge.isHidden = !cloudOnly
@@ -262,7 +277,8 @@ final class ThumbnailLoader {
         if cache.object(forKey: key as NSString) != nil { return }
         let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: size, height: size),
                                                    scale: scale, representationTypes: .all)
-        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] representation, _ in
+        // Called on a background queue; @Sendable keeps Swift from treating it as main-thread-only.
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { @Sendable [weak self] representation, _ in
             guard let cgImage = representation?.cgImage else { return }
             let image = NSImage(cgImage: cgImage, size: NSSize(width: size, height: size))
             Task { @MainActor in

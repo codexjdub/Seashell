@@ -23,6 +23,7 @@ final class PanelController: NSObject {
     var ignoresClick: ((NSPoint) -> Bool)?
 
     private let stash: StashPanelController
+    private let notes: NotesPanelController
     private lazy var panel = makePanel()
     private lazy var closeButton: NSButton = {
         let button = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")!,
@@ -43,10 +44,24 @@ final class PanelController: NSObject {
     /// Drag pasteboard change count at a left press outside the panel, until its release.
     private var changeCountAtPressOutside: Int?
 
-    init(store: StashStore, mover: FileMover, dropper: StashDropper) {
+    init(store: StashStore, notesStore: NotesStore, mover: FileMover, dropper: StashDropper) {
         stash = StashPanelController(store: store, mover: mover, dropper: dropper)
+        notes = NotesPanelController(store: notesStore)
         super.init()
         stash.onDraggedOut = { [weak self] point in self?.droppedElsewhere(at: point) }
+        notes.onDraggedOut = { [weak self] point in self?.droppedElsewhere(at: point) }
+        observeChanges { [weak self] in self?.textSizeChanged() }
+    }
+
+    /// An open panel grows or shrinks with the text size, on the display it's on.
+    private func textSizeChanged() {
+        let scale = UIScale.factor
+        guard isOpen, let screen = panel.screen else { return }
+        stash.closePreview()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            panel.animator().setFrame(PanelGeometry.frame(in: screen.visibleFrame, scale: scale), display: true)
+        }
     }
 
     /// Open and actually on screen. Something else (Mission Control, say) can
@@ -70,7 +85,7 @@ final class PanelController: NSObject {
         // Already open there: nothing to do (comparing frames would restart the
         // slide-in whenever they differ by a fraction of a point).
         if isShowing, screen.displayID == openDisplay { return }
-        let frame = PanelGeometry.frame(in: screen.visibleFrame)
+        let frame = PanelGeometry.frame(in: screen.visibleFrame, scale: UIScale.factor)
 
         if !isOpen {
             panel.setFrame(PanelGeometry.hiddenFrame(for: frame), display: false)
@@ -79,6 +94,7 @@ final class PanelController: NSObject {
         // Becomes key without activating Seashell, so the app you're in stays in front.
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(stash.grid)
+        notes.willShow()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
             panel.animator().setFrame(frame, display: true)
@@ -98,6 +114,7 @@ final class PanelController: NSObject {
         openDisplay = nil
         stopWatchingClicks()
         stash.willHide()
+        notes.willHide()
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.15
             panel.animator().setFrame(PanelGeometry.hiddenFrame(for: panel.frame), display: true)
@@ -188,6 +205,11 @@ final class PanelController: NSObject {
         }
     }
 
+    /// Saves the open note, e.g. when Seashell quits.
+    func saveNotes() {
+        notes.willHide()
+    }
+
     @objc private func closeButtonClicked() {
         close(reason: "close button")
     }
@@ -236,15 +258,33 @@ final class PanelController: NSObject {
         background.layer?.cornerRadius = 16
         background.layer?.masksToBounds = true
 
-        let content = stash.view
-        content.translatesAutoresizingMaskIntoConstraints = false
-        background.addSubview(content)
+        // Stash (55%) and Notes each on their own card, with a small gap.
+        let stashCard = PanelCard()
+        let notesCard = PanelCard()
+        for (card, content) in [(stashCard, stash.view), (notesCard, notes.view)] {
+            content.translatesAutoresizingMaskIntoConstraints = false
+            card.addSubview(content)
+            NSLayoutConstraint.activate([
+                content.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+                content.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+                content.topAnchor.constraint(equalTo: card.topAnchor),
+                content.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            ])
+            card.translatesAutoresizingMaskIntoConstraints = false
+            background.addSubview(card)
+        }
+        let inset: CGFloat = 8
         NSLayoutConstraint.activate([
-            content.leadingAnchor.constraint(equalTo: background.leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: background.trailingAnchor),
-            content.topAnchor.constraint(equalTo: background.topAnchor),
-            content.bottomAnchor.constraint(equalTo: background.bottomAnchor),
+            stashCard.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: inset),
+            stashCard.topAnchor.constraint(equalTo: background.topAnchor, constant: inset),
+            stashCard.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -inset),
+            notesCard.leadingAnchor.constraint(equalTo: stashCard.trailingAnchor, constant: inset),
+            notesCard.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -inset),
+            notesCard.topAnchor.constraint(equalTo: background.topAnchor, constant: inset),
+            notesCard.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -inset),
+            stashCard.widthAnchor.constraint(equalTo: notesCard.widthAnchor, multiplier: 55.0 / 45.0),
         ])
+        panel.onNewNote = { [weak self] in self?.notes.newNote() }
         updatePinButton()
         for button in [pinButton, closeButton] {
             button.translatesAutoresizingMaskIntoConstraints = false
@@ -261,10 +301,24 @@ final class PanelController: NSObject {
     }
 }
 
+/// The rounded, lightly tinted card each area of the panel sits on. Drawn, so
+/// its colors follow light and dark mode.
+final class PanelCard: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)
+        NSColor.windowBackgroundColor.withAlphaComponent(0.55).setFill()
+        path.fill()
+        NSColor.separatorColor.setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+}
+
 /// A borderless panel that can take keys (Esc, Space, ⌘⌫, ⌘A)
 /// without making Seashell the active app.
 final class SeashellPanel: NSPanel {
     var onEscape: (() -> Void)?
+    var onNewNote: (() -> Void)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -279,5 +333,42 @@ final class SeashellPanel: NSPanel {
         } else {
             super.keyDown(with: event)
         }
+    }
+
+    /// A menu bar app has no Edit menu, which is where text views normally get
+    /// ⌘X ⌘C ⌘V ⌘A ⌘Z ⇧⌘Z from; send those to whatever has focus. Plus ⌘N.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        if modifiers == .command, key == "n", let onNewNote {
+            onNewNote()
+            return true
+        }
+        // Text size: ⌘+ (also ⌘= and ⇧⌘=), ⌘−, ⌘0.
+        let setting = TextSizeSetting.shared
+        switch (modifiers, key) {
+        case (.command, "="), (.command, "+"), ([.command, .shift], "+"), ([.command, .shift], "="):
+            setting.size = setting.size.larger
+            return true
+        case (.command, "-"):
+            setting.size = setting.size.smaller
+            return true
+        case (.command, "0"):
+            setting.size = .standard
+            return true
+        default:
+            break
+        }
+        let action: Selector? = switch (modifiers, key) {
+        case (.command, "x"): #selector(NSText.cut(_:))
+        case (.command, "c"): #selector(NSText.copy(_:))
+        case (.command, "v"): #selector(NSText.paste(_:))
+        case (.command, "a"): #selector(NSText.selectAll(_:))
+        case (.command, "z"): Selector(("undo:"))
+        case ([.command, .shift], "z"): Selector(("redo:"))
+        default: nil
+        }
+        if let action, NSApp.sendAction(action, to: nil, from: self) { return true }
+        return super.performKeyEquivalent(with: event)
     }
 }
