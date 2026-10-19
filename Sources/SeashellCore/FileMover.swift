@@ -95,12 +95,13 @@ public struct FileMover: Sendable {
 
     // MARK: Within and out of Stash
 
-    /// Moves a stashed item to another shelf. It keeps its Put Back origin.
+    /// Moves a stashed item to another shelf, as `name` if given. It keeps its
+    /// Put Back origin.
     @discardableResult
-    public func move(_ item: URL, toShelf shelf: URL) throws -> URL {
+    public func move(_ item: URL, toShelf shelf: URL, named name: String? = nil) throws -> URL {
         let from = item.deletingLastPathComponent()
         let origin = ShelfManifest.read(in: from).origins[item.lastPathComponent]
-        let destination = FileNaming.uniqueDestination(for: item.lastPathComponent, in: shelf, isDirectory: isDirectory(item))
+        let destination = FileNaming.uniqueDestination(for: name ?? item.lastPathComponent, in: shelf, isDirectory: isDirectory(item))
         try transfer(item, to: destination)
         try ShelfManifest.update(in: from) { $0.remove(item.lastPathComponent) }
         try ShelfManifest.update(in: shelf) { $0.add(destination.lastPathComponent, origin: origin) }
@@ -139,16 +140,44 @@ public struct FileMover: Sendable {
         guard let origin = ShelfManifest.read(in: shelf).origins[item.lastPathComponent] else {
             throw FileMoverError.noOrigin(item.lastPathComponent)
         }
-        let folder = URL(filePath: origin, directoryHint: .isDirectory)
-        guard isDirectory(folder) else { throw FileMoverError.originMissing(origin) }
-        let destination = FileNaming.uniqueDestination(for: item.lastPathComponent, in: folder, isDirectory: isDirectory(item))
-        try transfer(item, to: destination)
-        try ShelfManifest.update(in: shelf) { $0.remove(item.lastPathComponent) }
+        let destination = try moveOut(item, to: URL(filePath: origin, directoryHint: .isDirectory), named: item.lastPathComponent)
         Log.info("Put back \(item.lastPathComponent) → \(origin)")
         return destination
     }
 
+    // MARK: Undo
+
+    /// Takes back one change made by a drop, paste or move between shelves (⌘Z).
+    /// Returns where the item went, or nil if it went to the Trash.
+    @discardableResult
+    public func undo(_ change: StashChange) throws -> URL? {
+        guard exists(change.item) else { throw FileMoverError.missing(change.item.lastPathComponent) }
+        switch change {
+        case .added(let item):
+            try delete(item)
+            return nil
+        case .movedIn(let item, let from):
+            let destination = try moveOut(item, to: from.deletingLastPathComponent(), named: from.lastPathComponent)
+            Log.info("Undo: \(item.lastPathComponent) back to \(destination.path(percentEncoded: false))")
+            return destination
+        case .movedBetweenShelves(let item, let from):
+            let shelf = from.deletingLastPathComponent()
+            guard isDirectory(shelf) else { throw FileMoverError.originMissing(shelf.path(percentEncoded: false)) }
+            return try move(item, toShelf: shelf, named: from.lastPathComponent)
+        }
+    }
+
     // MARK: Helpers
+
+    /// Moves a stashed item out of Stash into `folder` as `name` (or a numbered
+    /// name if that's taken), and forgets it in its shelf's manifest.
+    private func moveOut(_ item: URL, to folder: URL, named name: String) throws -> URL {
+        guard isDirectory(folder) else { throw FileMoverError.originMissing(folder.path(percentEncoded: false)) }
+        let destination = FileNaming.uniqueDestination(for: name, in: folder, isDirectory: isDirectory(item))
+        try transfer(item, to: destination)
+        try ShelfManifest.update(in: item.deletingLastPathComponent()) { $0.remove(item.lastPathComponent) }
+        return destination
+    }
 
     /// On the same volume this is an instant rename. Across volumes it copies,
     /// checks the copy matches, then deletes the original, like a Finder move.

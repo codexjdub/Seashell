@@ -25,7 +25,7 @@ After that it opens normally. Its icon appears in the menu bar, and a welcome wi
 - **Shelves.** Stash things on Main, or make as many shelves as you like. Drag tabs to reorder them.
 - **Files move in, copies come out.** A file dropped on a shelf moves there, as it would in Finder, and **Put Back** returns it to where it came from. Dragging an item out drops a copy and leaves it on the shelf.
 - **Text, links and pictures become files.** Text is saved as a `.txt` named by its first few words, a link as a `.webloc`, and picture data as a `.png`. Text and links drag back out as their words or address, so they drop straight into text fields and browsers.
-- **Notes.** Plain-text notes next to your shelves, each saved as a Markdown file. The first line is the title.
+- **Notes.** Plain-text notes next to your shelves, each saved as a Markdown file. The first line is the title. Pin the ones you use most to the top of the list, and keep to-do lists in them.
 - **Grab shelf.** Hold ⌥ and shake the pointer to see your 8 newest items, ready to drag out.
 - **Tear-off shelves.** Drag a shelf's tab out of the panel to keep that shelf in its own small floating window.
 
@@ -43,6 +43,7 @@ It closes on a click elsewhere, Esc, pushing up, or the same shortcut. The pin k
 - **Drag onto the panel**, or onto a shelf's tab.
 - **Shake while dragging.** A small shelf pops up by the pointer with a drop zone for each shelf.
 - **Drop onto the menu bar icon.** It goes into Main.
+- **From Finder or any app.** Right-click files or selected text and choose Services ▸ **Stash in Seashell** to put them in Main, or **New Seashell Note** to make a note of the text.
 - **Paste.** ⌘V in the panel stashes what's on the clipboard. Files are copied in and the originals stay.
 - **Screenshots.** Press ⇧⌘5. In the toolbar near the bottom of the screen, click Options, choose Other Location… and pick Documents ▸ Seashell ▸ Stash ▸ Main.
 
@@ -57,9 +58,18 @@ Anything over 1 GB asks first, since everything in Stash uploads to iCloud. Chan
 | Copy to the clipboard | ⌘C |
 | Move to the Trash | ⌘⌫ |
 | Move to another shelf | Drag it onto that shelf's tab |
+| Undo the last drop, paste or move | ⌘Z (a file goes back where it came from) |
 | More | Right-click: Open, Quick Look, Show in Finder, Copy, Paste, Rename…, Put Back, Move to Trash |
 
 Seashell never deletes anything permanently: removed items go to the Trash.
+
+## Notes
+
+- **Pin a note** to the top of the list: right-click it and choose Pin.
+- **To-dos.** Start a line with `- [ ]` and click the box to tick it. Return starts the next to-do, and Return on an empty one ends the list. ⇧⌘L turns lines into to-dos and back. The file stays plain Markdown (`- [x]` when done).
+- **Lists.** Return after `- item` or `1. item` starts the next one. Tab and ⇧Tab move list lines in and out.
+- **A note in its own window.** Right-click a note and choose Open in Its Own Window: it floats above other windows, like a sticky note, until you close it.
+- **More on right-click:** Open With another app, Show in Finder, Copy, Duplicate.
 
 ## Where your things live
 

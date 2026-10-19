@@ -2,7 +2,7 @@ import AppKit
 import QuickLookThumbnailing
 import SeashellCore
 
-/// The grid of items in a shelf. Handles the keyboard (Space, ⌘⌫, ⌘O, ⌘A),
+/// The grid of items in a shelf. Handles the keyboard (Space, ⌘⌫, ⌘O, ⌘A, ⌘Z),
 /// double-click, and selecting what was right-clicked. What those actions do is
 /// up to the controller.
 @MainActor
@@ -12,11 +12,13 @@ final class StashGridView: NSCollectionView {
     var onTogglePreview: (() -> Void)?
     var onCopy: (() -> Void)?
     var onPaste: (() -> Void)?
+    var onUndo: (() -> Void)?
     var contextMenu: (() -> NSMenu?)?
 
-    // ⌘C and ⌘V arrive here as the standard copy: and paste: actions.
+    // ⌘C, ⌘V and ⌘Z arrive here as the standard copy:, paste: and undo: actions.
     @objc func copy(_ sender: Any?) { onCopy?() }
     @objc func paste(_ sender: Any?) { onPaste?() }
+    @objc func undo(_ sender: Any?) { onUndo?() }
 
     override var acceptsFirstResponder: Bool { true }
 

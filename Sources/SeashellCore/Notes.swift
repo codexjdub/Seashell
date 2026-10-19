@@ -5,6 +5,8 @@ public struct Note: Identifiable, Hashable, Sendable {
     public let url: URL
     /// When it was last edited, as of reading it from disk.
     public let modified: Date
+    /// Kept at the top of the list (see NotesManifest).
+    public let isPinned: Bool
     public var id: URL { url }
     /// The file name without `.md`, which Seashell keeps matching the first line.
     public var title: String { url.deletingPathExtension().lastPathComponent }
@@ -14,12 +16,13 @@ public enum NoteNaming {
     public static let untitled = "Untitled"
     public static let maxTitleLength = 60
 
-    /// A note's title: its first non-empty line, without Markdown heading marks.
+    /// A note's title: its first non-empty line, without Markdown heading marks
+    /// or a to-do's `- [ ]`.
     public static func title(for text: String) -> String {
         let firstLine = text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty } ?? ""
-        var title = firstLine
+        var title = Checklist.withoutMarker(firstLine)
         while title.hasPrefix("#") { title.removeFirst() }
         title = FileNaming.sanitized(title)
         if title.count > maxTitleLength {
@@ -52,18 +55,33 @@ public struct NotesLibrary: Sendable {
         self.trash = trash
     }
 
-    /// Markdown files, most recently edited first.
+    /// Markdown files: pinned ones first, then most recently edited first.
     public func notes() -> [Note] {
         let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey],
                                                                   options: [.skipsHiddenFiles])) ?? []
+        let pinned = Set(NotesManifest.read(in: folder).pinned)
         return urls
             .filter { $0.pathExtension.lowercased() == "md" }
-            .compactMap(note(at:))
-            .sorted { $0.modified > $1.modified }
+            .compactMap { url in
+                Self.modified(url).map { Note(url: url, modified: $0, isPinned: pinned.contains(url.lastPathComponent)) }
+            }
+            .sorted { ($0.isPinned ? 1 : 0, $0.modified) > ($1.isPinned ? 1 : 0, $1.modified) }
     }
 
     public func note(at url: URL) -> Note? {
-        Self.modified(url).map { Note(url: url, modified: $0) }
+        Self.modified(url).map {
+            Note(url: url, modified: $0, isPinned: NotesManifest.read(in: folder).pinned.contains(url.lastPathComponent))
+        }
+    }
+
+    /// Pins a note to the top of the list, or unpins it.
+    public func setPinned(_ note: Note, _ pinned: Bool) throws {
+        let name = note.url.lastPathComponent
+        try NotesManifest.update(in: folder) { manifest in
+            manifest.pinned.removeAll { $0 == name }
+            if pinned { manifest.pinned.append(name) }
+        }
+        Log.info("\(pinned ? "Pinned" : "Unpinned") note \(note.title)")
     }
 
     public func read(_ note: Note) throws -> String {
@@ -109,6 +127,11 @@ public struct NotesLibrary: Sendable {
             : FileNaming.uniqueDestination(for: name, in: folder, isDirectory: false)
         try Coordinated.move(note.url, to: destination)
         Log.info("Renamed note \(note.title) → \(destination.deletingPathExtension().lastPathComponent)")
+        if NotesManifest.read(in: folder).pinned.contains(current) {
+            try NotesManifest.update(in: folder) { manifest in
+                manifest.pinned = manifest.pinned.map { $0 == current ? destination.lastPathComponent : $0 }
+            }
+        }
         return try existing(destination)
     }
 
@@ -116,6 +139,10 @@ public struct NotesLibrary: Sendable {
     public func delete(_ note: Note) throws {
         try Coordinated.write(note.url, options: .forDeleting) { try trash($0) }
         Log.info("Moved note \(note.title) to the Trash")
+        let name = note.url.lastPathComponent
+        if NotesManifest.read(in: folder).pinned.contains(name) {
+            try NotesManifest.update(in: folder) { $0.pinned.removeAll { $0 == name } }
+        }
     }
 
     private func write(_ text: String, to url: URL) throws {

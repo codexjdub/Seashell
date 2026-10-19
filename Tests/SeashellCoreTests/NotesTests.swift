@@ -121,4 +121,49 @@ struct NotesLibraryTests {
         try library.delete(first)
         #expect(try library.renameToFirstLine(second, text: "Groceries\neggs").title == "Groceries")
     }
+
+    // MARK: Pinning
+
+    @Test func pinnedNotesComeFirst() throws {
+        let old = try folder.file("Notes/Old.md")
+        let middle = try folder.file("Notes/Middle.md")
+        try folder.file("Notes/New.md")
+        try setModified(old, Date(timeIntervalSinceNow: -3600))
+        try setModified(middle, Date(timeIntervalSinceNow: -1800))
+        for name in ["Old", "Middle"] {
+            try library.setPinned(try #require(library.notes().first { $0.title == name }), true)
+        }
+        #expect(library.notes().map(\.title) == ["Middle", "Old", "New"])
+        #expect(library.notes().map(\.isPinned) == [true, true, false])
+        #expect(library.note(at: old)?.isPinned == true)
+
+        try library.setPinned(try #require(library.note(at: old)), false)
+        #expect(library.notes().map(\.title) == ["Middle", "New", "Old"])
+    }
+
+    @Test func pinFollowsARenameAndLeavesWithTheTrash() throws {
+        let note = try library.create(text: "Draft")
+        try library.setPinned(note, true)
+        let renamed = try library.renameToFirstLine(note, text: "Trip plan")
+        #expect(renamed.isPinned)
+        #expect(NotesManifest.read(in: notesFolder).pinned == ["Trip plan.md"])
+
+        try library.delete(renamed)
+        #expect(NotesManifest.read(in: notesFolder).pinned.isEmpty)
+    }
+
+    @Test func pinningTwiceKeepsOneEntry() throws {
+        let note = try library.create(text: "Groceries")
+        try library.setPinned(note, true)
+        try library.setPinned(note, true)
+        #expect(NotesManifest.read(in: notesFolder).pinned == ["Groceries.md"])
+    }
+
+    @Test func unreadablePinsAreLeftAlone() throws {
+        let note = try library.create(text: "Groceries")
+        let manifest = try folder.file("Notes/\(NotesManifest.fileName)", "{ not json")
+        #expect(throws: ShelfManifestError.unreadable("Notes")) { try library.setPinned(note, true) }
+        #expect(try text(manifest) == "{ not json")
+        #expect(library.notes().map(\.title) == ["Groceries"])
+    }
 }

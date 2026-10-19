@@ -79,6 +79,7 @@ final class StashPanelController: NSViewController {
         grid.onTogglePreview = { [weak self] in self?.togglePreview() }
         grid.onCopy = { [weak self] in self.map { ItemActions.copy($0.selectedItems) } }
         grid.onPaste = { [weak self] in self?.pasteIntoShelf() }
+        grid.onUndo = { [weak self] in self?.undo() }
 
         let scroll = NSScrollView()
         scroll.documentView = grid
@@ -314,9 +315,26 @@ final class StashPanelController: NSViewController {
         }
         let urls = draggedURLs
         note("\(count(urls.count)) dragged from the grid onto tab “\(shelf.name)”")
-        let destination = shelf.url
-        perform("move", urls) { try $0.move($1, toShelf: destination) }
+        move(urls, to: shelf.url)
         return !urls.isEmpty
+    }
+
+    /// Moves items onto another shelf, as one step for ⌘Z.
+    private func move(_ urls: [URL], to destination: URL) {
+        guard !urls.isEmpty else { return }
+        let mover = self.mover
+        let step = dropper.history.begin()
+        Task {
+            for url in urls {
+                do {
+                    let moved = try await Task.detached { try mover.move(url, toShelf: destination) }.value
+                    step.record(.movedBetweenShelves(moved, from: url))
+                } catch {
+                    Alerts.showError("Couldn’t move “\(url.lastPathComponent)”", error)
+                }
+            }
+            store.reload()
+        }
     }
 
     // MARK: Item actions
@@ -375,6 +393,18 @@ final class StashPanelController: NSViewController {
         guard let shelf = currentShelf else { return }
         note("Paste into “\(shelf.name)”")
         if !dropper.paste(into: shelf.url) { NSSound.beep() }
+    }
+
+    /// ⌘Z: the latest drop, paste or move between shelves goes back.
+    private func undo() {
+        note("Undo")
+        Task {
+            if await dropper.undoLast() {
+                store.reload()
+            } else {
+                NSSound.beep()
+            }
+        }
     }
 
     @objc private func renameSelection() {

@@ -8,11 +8,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var floatingShelf: FloatingShelf?
     private var panel: PanelController?
     private var notesStore: NotesStore?
+    private var noteWindows: NoteWindows?
     private let dragWatcher = DragWatcher()
     private let edgeScrollWatcher = EdgeScrollWatcher()
     private let optionShakeWatcher = OptionShakeWatcher()
     private var grabShelf: GrabShelf?
     private var tearOffs: TearOffShelves?
+    private var services: ServiceProvider?
     private let panelHotKey = HotKey(id: 1)
     private let settingsWindow = SettingsWindow()
     private let tipsWindow = TipsWindow()
@@ -51,7 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let notesStore = NotesStore(library: NotesLibrary(folder: folders.notes))
         notesStore.startWatching()
         self.notesStore = notesStore
-        let panel = PanelController(store: store, notesStore: notesStore, mover: mover, dropper: dropper)
+        let noteWindows = NoteWindows(store: notesStore)
+        self.noteWindows = noteWindows
+        let panel = PanelController(store: store, notesStore: notesStore, noteWindows: noteWindows, mover: mover, dropper: dropper)
         self.panel = panel
         menuBar = MenuBarController(store: store, notesStore: notesStore, dropper: dropper, panel: panel,
                                     settings: settingsWindow, tips: tipsWindow)
@@ -59,6 +63,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.openSettings = { [settingsWindow] in settingsWindow.show() }
         settingsWindow.panelFrame = { panel.shownFrame }
         panel.ignoresClick = { [weak self] point in self?.menuBar?.isOnIcon(point) ?? false }
+        let services = ServiceProvider(store: store, notesStore: notesStore, dropper: dropper, panel: panel)
+        self.services = services
+        NSApp.servicesProvider = services
         let floatingShelf = FloatingShelf(store: store, dropper: dropper)
         self.floatingShelf = floatingShelf
 
@@ -86,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelHotKey.set(shortcut.key) { panel.toggle(reason: "keyboard shortcut \(shortcut.name)") }
         }
         tearOffs.restore()
+        noteWindows.restore()
         optionShakeWatcher.onShake = { point in
             guard AppSettings.shared.allowsShake() else { return }
             grabShelf.toggle(at: point)
@@ -113,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         guard !isSecondCopy else { return }
         panel?.saveNotes()
+        noteWindows?.tidyAll()
         Log.info("Seashell quit")
     }
 

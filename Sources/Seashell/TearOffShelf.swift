@@ -323,6 +323,18 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
         if !dropper.paste(into: shelf.url) { NSSound.beep() }
     }
 
+    /// ⌘Z: the latest drop, paste or move between shelves goes back.
+    private func undo() {
+        note("undo")
+        Task {
+            if await dropper.undoLast() {
+                store.reload()
+            } else {
+                NSSound.beep()
+            }
+        }
+    }
+
     private func deleteSelection() {
         perform("move to the Trash", selectedItems.map(\.url)) { try $0.delete($1) }
     }
@@ -392,6 +404,7 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
         grid.onTogglePreview = { [weak self] in self?.togglePreview() }
         grid.onCopy = { [weak self] in self.map { ItemActions.copy($0.selectedItems) } }
         grid.onPaste = { [weak self] in self?.paste() }
+        grid.onUndo = { [weak self] in self?.undo() }
         grid.contextMenu = { [weak self] in self?.itemMenu() }
 
         let scroll = NSScrollView()
@@ -466,13 +479,14 @@ final class TearOffWindow: NSPanel {
         onEscape?()
     }
 
-    /// No menu bar of its own: ⌘C and ⌘V go to the grid by hand.
+    /// No menu bar of its own: ⌘C, ⌘V and ⌘Z go to the grid by hand.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
         let action: Selector? = switch (modifiers, event.charactersIgnoringModifiers?.lowercased()) {
         case (.command, "c"): #selector(NSText.copy(_:))
         case (.command, "v"): #selector(NSText.paste(_:))
         case (.command, "a"): #selector(NSText.selectAll(_:))
+        case (.command, "z"): Selector(("undo:"))
         default: nil
         }
         if let action, NSApp.sendAction(action, to: nil, from: self) { return true }

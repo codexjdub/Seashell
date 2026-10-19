@@ -72,9 +72,9 @@ final class PanelController: NSObject {
     /// Drag pasteboard change count at a left press outside the panel, until its release.
     private var changeCountAtPressOutside: Int?
 
-    init(store: StashStore, notesStore: NotesStore, mover: FileMover, dropper: StashDropper) {
+    init(store: StashStore, notesStore: NotesStore, noteWindows: NoteWindows, mover: FileMover, dropper: StashDropper) {
         stash = StashPanelController(store: store, mover: mover, dropper: dropper)
-        notes = NotesPanelController(store: notesStore)
+        notes = NotesPanelController(store: notesStore, windows: noteWindows)
         super.init()
         stash.onDraggedOut = { [weak self] point in self?.droppedElsewhere(at: point) }
         notes.onDraggedOut = { [weak self] point in self?.droppedElsewhere(at: point) }
@@ -173,6 +173,12 @@ final class PanelController: NSObject {
     func openNotes(reason: String) {
         open(reason: reason)
         notes.focusEditor()
+    }
+
+    /// Opens on `note`, with the keyboard at its end, e.g. one New Seashell Note just made.
+    func open(note: Note, reason: String) {
+        open(reason: reason)
+        notes.show(note)
     }
 
     func close(reason: String) {
@@ -593,8 +599,7 @@ final class SeashellPanel: NSPanel {
         }
     }
 
-    /// A menu bar app has no Edit menu, which is where text views normally get
-    /// ⌘X ⌘C ⌘V ⌘A ⌘Z ⇧⌘Z from; send those to whatever has focus. Plus ⌘N and ⌘,.
+    /// ⌘N and ⌘,, plus the edit shortcuts every Seashell window gets (EditShortcuts).
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
         let key = event.charactersIgnoringModifiers?.lowercased()
@@ -606,31 +611,6 @@ final class SeashellPanel: NSPanel {
             onSettings()
             return true
         }
-        // Text size: ⌘+ (also ⌘= and ⇧⌘=), ⌘−, ⌘0.
-        let setting = TextSizeSetting.shared
-        switch (modifiers, key) {
-        case (.command, "="), (.command, "+"), ([.command, .shift], "+"), ([.command, .shift], "="):
-            setting.size = setting.size.larger
-            return true
-        case (.command, "-"):
-            setting.size = setting.size.smaller
-            return true
-        case (.command, "0"):
-            setting.size = .standard
-            return true
-        default:
-            break
-        }
-        let action: Selector? = switch (modifiers, key) {
-        case (.command, "x"): #selector(NSText.cut(_:))
-        case (.command, "c"): #selector(NSText.copy(_:))
-        case (.command, "v"): #selector(NSText.paste(_:))
-        case (.command, "a"): #selector(NSText.selectAll(_:))
-        case (.command, "z"): Selector(("undo:"))
-        case ([.command, .shift], "z"): Selector(("redo:"))
-        default: nil
-        }
-        if let action, NSApp.sendAction(action, to: nil, from: self) { return true }
-        return super.performKeyEquivalent(with: event)
+        return EditShortcuts.perform(event, from: self) || super.performKeyEquivalent(with: event)
     }
 }

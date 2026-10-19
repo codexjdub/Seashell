@@ -46,7 +46,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create "$ARM_BIN" "$INTEL_BIN" -output "$APP/Contents/MacOS/$PRODUCT"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
-# LSUIElement: a menu bar app, with no Dock icon.
+# LSUIElement: a menu bar app, with no Dock icon. NSServices: "Stash in Seashell"
+# (files, folders or text, e.g. from Finder's right-click menu) and "New Seashell
+# Note" (text) in the Services menu; ServiceProvider.swift handles them.
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -64,6 +66,24 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>NSHumanReadableCopyright</key><string>© 2026 codexjdub</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSDocumentsFolderUsageDescription</key><string>Seashell keeps your stashed files and notes in Documents/Seashell so iCloud can sync them.</string>
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key><dict><key>default</key><string>Stash in Seashell</string></dict>
+            <key>NSMessage</key><string>stashInSeashell</string>
+            <key>NSPortName</key><string>$PRODUCT</string>
+            <key>NSSendFileTypes</key><array><string>public.item</string></array>
+            <key>NSSendTypes</key><array><string>public.utf8-plain-text</string></array>
+            <key>NSRequiredContext</key><dict/>
+        </dict>
+        <dict>
+            <key>NSMenuItem</key><dict><key>default</key><string>New Seashell Note</string></dict>
+            <key>NSMessage</key><string>newSeashellNote</string>
+            <key>NSPortName</key><string>$PRODUCT</string>
+            <key>NSSendTypes</key><array><string>public.utf8-plain-text</string></array>
+            <key>NSRequiredContext</key><dict/>
+        </dict>
+    </array>
 </dict>
 </plist>
 EOF

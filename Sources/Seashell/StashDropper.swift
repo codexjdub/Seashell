@@ -12,6 +12,9 @@ final class StashDropper {
 
     private static let urlTitleType = NSPasteboard.PasteboardType("public.url-name")
 
+    /// What ⌘Z takes back: each drop or paste is a step, as are moves between
+    /// shelves (recorded by the shelf tabs).
+    let history = StashUndoHistory()
     private let mover: FileMover
     private let promiseQueue = OperationQueue()
     /// Where promised files land before they move into a shelf.
@@ -42,6 +45,11 @@ final class StashDropper {
         accept(info.draggingPasteboard, into: shelf, copyingFiles: false)
     }
 
+    /// "Stash in Seashell" in the Services menu: like a drop of the selection.
+    func stash(_ pasteboard: NSPasteboard, into shelf: URL) -> Bool {
+        accept(pasteboard, into: shelf, copyingFiles: false)
+    }
+
     /// ⌘V into a shelf: like a drop, except files are copied in and the
     /// originals stay, as pasting does everywhere.
     func paste(into shelf: URL) -> Bool {
@@ -59,37 +67,39 @@ final class StashDropper {
 
         // Read now: the drag's pasteboard is gone by the time a slow promise gives up.
         let fallback = objects.contains { $0 is NSFilePromiseReceiver } ? PromiseFallback(pasteboard) : nil
+        let step = history.begin()
 
         var files: [URL] = []
         for object in objects {
             switch object {
             case let receiver as NSFilePromiseReceiver:
-                receive(receiver, into: shelf, fallback: fallback ?? PromiseFallback(pasteboard))
+                receive(receiver, into: shelf, fallback: fallback ?? PromiseFallback(pasteboard), step: step)
             case let url as URL where url.isFileURL:
                 files.append(url)
             case let url as URL:
-                run("link") { try $0.stash(link: url, title: pasteboard.string(forType: Self.urlTitleType), into: shelf) }
+                run("link", step) { try $0.stash(link: url, title: pasteboard.string(forType: Self.urlTitleType), into: shelf) }
             case let image as NSImage:
                 // A lone picture's PNG goes in as it is, rather than through a
                 // full-size TIFF; anything else is converted in the background.
                 let png = objects.count == 1 ? pasteboard.data(forType: .png) : nil
                 guard let data = png ?? image.tiffRepresentation else { continue }
-                runInBackground("image") { try $0.stash(imageData: data, into: shelf) }
+                runInBackground("image", step) { try $0.stash(imageData: data, into: shelf) }
             case let text as String:
-                run("text") { try $0.stash(text: text, into: shelf) }
+                run("text", step) { try $0.stash(text: text, into: shelf) }
             default:
                 continue
             }
         }
         if !files.isEmpty {
-            Task { await stash(files, into: shelf, rememberOrigin: true, copying: copyingFiles) }
+            Task { await stash(files, into: shelf, rememberOrigin: true, copying: copyingFiles, step: step) }
         }
         return true
     }
 
     /// Moves files in one by one, off the main thread, asking first about ones
     /// over the limit in Settings.
-    private func stash(_ files: [URL], into shelf: URL, rememberOrigin: Bool, copying: Bool = false) async {
+    private func stash(_ files: [URL], into shelf: URL, rememberOrigin: Bool, copying: Bool = false,
+                       step: StashUndoHistory.Step) async {
         let mover = self.mover
         for file in files {
             if let limit = AppSettings.shared.largeFileLimit.bytes {
@@ -101,9 +111,14 @@ final class StashDropper {
                 }
             }
             do {
-                _ = try await Task.detached {
+                let stashed = try await Task.detached {
                     copying ? try mover.stashCopy(file, into: shelf) : try mover.stash(file, into: shelf, rememberOrigin: rememberOrigin)
                 }.value
+                // A file from a folder goes back there on undo; a copy, or a file
+                // an app wrote somewhere temporary, goes to the Trash.
+                if stashed != file {
+                    step.record(copying || !rememberOrigin ? .added(stashed) : .movedIn(stashed, from: file))
+                }
             } catch {
                 report("Couldn’t stash “\(file.lastPathComponent)”", error)
             }
@@ -113,7 +128,8 @@ final class StashDropper {
     /// Apps such as Photos, Mail and web browsers hand over a file only when it's
     /// dropped. It is written to a temporary folder on the same disk, then moved
     /// into the shelf.
-    private func receive(_ receiver: NSFilePromiseReceiver, into shelf: URL, fallback: PromiseFallback) {
+    private func receive(_ receiver: NSFilePromiseReceiver, into shelf: URL, fallback: PromiseFallback,
+                         step: StashUndoHistory.Step) {
         let incoming = Self.incomingRoot.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         do {
             try FileManager.default.createDirectory(at: incoming, withIntermediateDirectories: true)
@@ -130,7 +146,7 @@ final class StashDropper {
                     self.report("Couldn’t receive “\(file.lastPathComponent)”", error)
                     return
                 }
-                await self.finishPromise(file, into: shelf, fallback: fallback)
+                await self.finishPromise(file, into: shelf, fallback: fallback, step: step)
             }
         }
     }
@@ -138,13 +154,14 @@ final class StashDropper {
     /// Stashes a promised file once its app has finished writing it. If it never
     /// does (it stays empty), the picture's web address or data from the same
     /// drag stands in. An empty file is never stashed.
-    private func finishPromise(_ file: URL, into shelf: URL, fallback: PromiseFallback) async {
+    private func finishPromise(_ file: URL, into shelf: URL, fallback: PromiseFallback,
+                               step: StashUndoHistory.Step) async {
         let name = file.lastPathComponent
         let started = ContinuousClock.now
         if await PromisedFile.waitUntilWritten(file) {
             let waited = ContinuousClock.now - started
             Log.info("Promised \(name) arrived after \(waited.formatted(.units(allowed: [.seconds], fractionalPart: .show(length: 1))))")
-            await stash([file], into: shelf, rememberOrigin: false)
+            await stash([file], into: shelf, rememberOrigin: false, step: step)
             return
         }
         Log.info("Promised \(name) was still empty after 15 s")
@@ -153,7 +170,7 @@ final class StashDropper {
             do {
                 try data.write(to: file)
                 Log.info("Downloaded \(name) from \(address.host() ?? "the web") instead")
-                await stash([file], into: shelf, rememberOrigin: false)
+                await stash([file], into: shelf, rememberOrigin: false, step: step)
                 return
             } catch {
                 Log.error("Couldn’t save the downloaded \(name): \(error.localizedDescription)")
@@ -161,7 +178,7 @@ final class StashDropper {
         }
         if let data = fallback.imageData {
             Log.info("Saved the dragged picture data instead of \(name)")
-            runInBackground("picture") { try $0.stash(imageData: data, into: shelf) }
+            runInBackground("picture", step) { try $0.stash(imageData: data, into: shelf) }
             return
         }
         report("Couldn’t get “\(name)”", DropError.neverWritten)
@@ -178,24 +195,45 @@ final class StashDropper {
         return data
     }
 
-    private func run(_ what: String, _ body: (FileMover) throws -> Void) {
+    /// Runs something that makes a new item, which undo sends to the Trash.
+    private func run(_ what: String, _ step: StashUndoHistory.Step, _ body: (FileMover) throws -> URL) {
         do {
-            try body(mover)
+            step.record(.added(try body(mover)))
         } catch {
             report("Couldn’t stash the \(what)", error)
         }
     }
 
     /// Like `run`, off the main thread: converting a big picture takes a moment.
-    private func runInBackground(_ what: String, _ body: @escaping @Sendable (FileMover) throws -> Void) {
+    private func runInBackground(_ what: String, _ step: StashUndoHistory.Step,
+                                 _ body: @escaping @Sendable (FileMover) throws -> URL) {
         let mover = self.mover
         Task {
             do {
-                try await Task.detached { try body(mover) }.value
+                step.record(.added(try await Task.detached { try body(mover) }.value))
             } catch {
                 report("Couldn’t stash the \(what)", error)
             }
         }
+    }
+
+    /// ⌘Z: takes back the latest drop, paste or move between shelves, whichever
+    /// shelf it went to. False if there was nothing left to take back.
+    func undoLast() async -> Bool {
+        guard let changes = history.popLatest() else { return false }
+        // Items since moved, renamed or trashed are left alone.
+        let present = changes.filter { FileManager.default.fileExists(atPath: $0.item.path(percentEncoded: false)) }
+        Log.info("Undo: \(present.count) of \(changes.count) \(changes.count == 1 ? "item" : "items") from the last drop")
+        guard !present.isEmpty else { return false }
+        let mover = self.mover
+        for change in present.reversed() {
+            do {
+                _ = try await Task.detached { try mover.undo(change) }.value
+            } catch {
+                report("Couldn’t undo “\(change.item.lastPathComponent)”", error)
+            }
+        }
+        return true
     }
 
     /// Once a promised file has moved into a shelf (or couldn't), what's left of

@@ -10,14 +10,20 @@ import SeashellCore
 ///   you type; left empty it just disappears. An existing note left empty goes to the Trash.
 /// - Rows show live titles: the open note's row follows its first line as you type.
 /// - Follows the folder: another Mac's edits show up when you have none pending.
+/// - Pinned notes stay at the top of the list (right-click → Pin).
+/// - A note can open in its own window (right-click); it's then edited only
+///   there, and choosing it here brings that window forward.
+/// - To-dos (`- [ ]`): click the box to tick it; done ones show grey and struck
+///   through. Return continues the list, ⇧⌘L makes or unmakes to-dos.
 @MainActor
 final class NotesPanelController: NSViewController {
     /// Called when a note dragged out of the list was taken by a drop elsewhere.
     var onDraggedOut: ((NSPoint) -> Void)?
 
     private let store: NotesStore
+    private let windows: NoteWindows
     private let table = NotesTableView()
-    private let editor = NoteTextView()
+    private let editor = NoteTextView.make()
     private let placeholder = PassThroughLabel(labelWithString: "Type to start a note")
     private var notes: [Note] = []
     /// The note in the editor. Nil while it's a new note with no file yet.
@@ -46,9 +52,11 @@ final class NotesPanelController: NSViewController {
     private var headerHeight: NSLayoutConstraint?
     private var listWidth: NSLayoutConstraint?
 
-    init(store: NotesStore) {
+    init(store: NotesStore, windows: NoteWindows) {
         self.store = store
+        self.windows = windows
         super.init(nibName: nil, bundle: nil)
+        windows.onChange = { [weak self] in self?.reloadList() }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -84,16 +92,6 @@ final class NotesPanelController: NSViewController {
         listScroll.hasVerticalScroller = true
         listScroll.autohidesScrollers = true
 
-        editor.isRichText = false
-        editor.allowsUndo = true
-        editor.textContainerInset = NSSize(width: 6, height: 8)
-        editor.drawsBackground = false
-        // Markdown is typed as is: no curly quotes or long dashes.
-        editor.isAutomaticQuoteSubstitutionEnabled = false
-        editor.isAutomaticDashSubstitutionEnabled = false
-        editor.isVerticallyResizable = true
-        editor.autoresizingMask = [.width]
-        editor.textContainer?.widthTracksTextView = true
         editor.delegate = self
         let editorScroll = NSScrollView()
         editorScroll.documentView = editor
@@ -159,7 +157,7 @@ final class NotesPanelController: NSViewController {
 
     func willShow() {
         if current == nil, editor.string.isEmpty, let name = lastNoteName,
-           let note = store.notes.first(where: { $0.url.lastPathComponent == name }) {
+           let note = store.notes.first(where: { $0.url.lastPathComponent == name }), !windows.contains(note) {
             open(note)
         }
     }
@@ -186,7 +184,7 @@ final class NotesPanelController: NSViewController {
             } else {
                 note("\(current.title) was renamed or deleted elsewhere")
                 self.current = nil
-                editor.string = ""
+                clearEditor()
             }
         }
         notes = newNotes
@@ -233,6 +231,10 @@ final class NotesPanelController: NSViewController {
     // MARK: Opening, saving, leaving
 
     private func open(_ note: Note) {
+        if windows.contains(note) {
+            windows.open(note)
+            return selectCurrentRow()
+        }
         guard leaveCurrent() else { return selectCurrentRow() }
         guard let fresh = store.library.note(at: note.url) else { return }
         load(fresh)
@@ -248,19 +250,31 @@ final class NotesPanelController: NSViewController {
         editor.string = text
         editor.setSelectedRange(NSRange(location: min(selection.location, (text as NSString).length), length: 0))
         editor.undoManager?.removeAllActions()
+        editor.styleChecklists()
         updatePlaceholder()
     }
+
 
     /// Puts the keyboard in the editor.
     func focusEditor() {
         view.window?.makeFirstResponder(editor)
     }
 
+    /// Opens `note` with the keyboard at its end, ready to add to it.
+    func show(_ note: Note) {
+        open(note)
+        guard current?.url.lastPathComponent == note.url.lastPathComponent else { return }
+        let end = NSRange(location: (editor.string as NSString).length, length: 0)
+        editor.setSelectedRange(end)
+        editor.scrollRangeToVisible(end)
+        focusEditor()
+    }
+
     @objc func newNote() {
         note("new note")
         guard leaveCurrent() else { return }
         isDraft = true
-        editor.string = ""
+        clearEditor()
         reloadList()
         updatePlaceholder()
         view.window?.makeFirstResponder(editor)
@@ -316,7 +330,7 @@ final class NotesPanelController: NSViewController {
     private func leaveCurrent() -> Bool {
         guard saveNow() else { return false }
         defer {
-            editor.string = ""
+            clearEditor()
             reloadList()
         }
         if isDraft {
@@ -340,13 +354,146 @@ final class NotesPanelController: NSViewController {
         return true
     }
 
+    /// Empties the editor, and forgets its typing: ⌘Z mustn't bring back
+    /// another note's words.
+    private func clearEditor() {
+        editor.string = ""
+        editor.undoManager?.removeAllActions()
+    }
+
     // MARK: List actions
 
     private func noteMenu() -> NSMenu {
         let menu = NSMenu()
-        let trash = menu.addItem(withTitle: "Move to Trash", action: #selector(deleteSelectedNote), keyEquivalent: "")
-        trash.target = self
+        @discardableResult
+        func add(_ title: String, _ action: Selector?, for note: Note? = nil) -> NSMenuItem {
+            let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
+            item.target = self
+            item.representedObject = note?.url
+            return item
+        }
+        if rows.indices.contains(table.selectedRow), case .note(let selected) = rows[table.selectedRow] {
+            add("Open in Its Own Window", #selector(openInWindow), for: selected)
+            add("Open With", nil).submenu = openWithMenu(for: selected)
+            add("Show in Finder", #selector(showInFinder), for: selected)
+            menu.addItem(.separator())
+            add("Copy", #selector(copyNote), for: selected)
+            add("Duplicate", #selector(duplicateNote), for: selected)
+            add(selected.isPinned ? "Unpin" : "Pin", #selector(togglePin), for: selected)
+            menu.addItem(.separator())
+        }
+        add("Move to Trash", #selector(deleteSelectedNote))
         return menu
+    }
+
+    /// Apps that open Markdown files, the default one first.
+    private func openWithMenu(for note: Note) -> NSMenu {
+        let menu = NSMenu()
+        let workspace = NSWorkspace.shared
+        let preferred = workspace.urlForApplication(toOpen: note.url)?.standardizedFileURL
+        // Without ".app", which Finder shows when it's set to show all extensions.
+        let name = { (app: URL) -> String in
+            let shown = FileManager.default.displayName(atPath: app.path(percentEncoded: false))
+            return shown.hasSuffix(".app") ? String(shown.dropLast(4)) : shown
+        }
+        let apps = workspace.urlsForApplications(toOpen: note.url)
+            .map(\.standardizedFileURL)
+            .filter { $0 != Bundle.main.bundleURL.standardizedFileURL }
+            .sorted { ($0 == preferred ? 0 : 1, name($0).lowercased()) < ($1 == preferred ? 0 : 1, name($1).lowercased()) }
+        for app in apps {
+            let item = menu.addItem(withTitle: app == preferred ? "\(name(app)) (default)" : name(app),
+                                    action: #selector(openWith), keyEquivalent: "")
+            item.target = self
+            item.representedObject = [note.url, app]
+            let icon = workspace.icon(forFile: app.path(percentEncoded: false))
+            icon.size = NSSize(width: 16, height: 16)
+            item.image = icon
+            if app == preferred, apps.count > 1 { menu.addItem(.separator()) }
+        }
+        if apps.isEmpty {
+            menu.addItem(withTitle: "No Apps", action: nil, keyEquivalent: "").isEnabled = false
+        }
+        return menu
+    }
+
+    /// The note a menu item is about, as the list has it now.
+    private func menuNote(_ sender: NSMenuItem) -> Note? {
+        let url = (sender.representedObject as? URL) ?? (sender.representedObject as? [URL])?.first
+        guard let name = url?.lastPathComponent else { return nil }
+        return notes.first { $0.url.lastPathComponent == name }
+    }
+
+    /// Writes edits waiting for `note`, here or in its window, so other apps
+    /// and copies get the latest text.
+    private func flush(_ note: Note) {
+        if note.url.lastPathComponent == current?.url.lastPathComponent { saveNow() }
+        windows.saveNow(note)
+    }
+
+    @objc private func openInWindow(_ sender: NSMenuItem) {
+        guard var target = menuNote(sender) else { return }
+        note("Open in Its Own Window \(target.title)")
+        if target.url.lastPathComponent == current?.url.lastPathComponent {
+            // Leaving it saves it and renames it to its first line (or trashes it if empty).
+            guard leaveCurrent(), let name = lastNoteName,
+                  let left = store.notes.first(where: { $0.url.lastPathComponent == name }) else { return }
+            target = left
+            lastNoteName = nil
+            updatePlaceholder()
+        }
+        windows.open(target, below: view.window?.frame)
+    }
+
+    @objc private func openWith(_ sender: NSMenuItem) {
+        guard let target = menuNote(sender), let app = (sender.representedObject as? [URL])?.last else { return }
+        note("Open With \(app.deletingPathExtension().lastPathComponent): \(target.title)")
+        flush(target)
+        NSWorkspace.shared.open([target.url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    @objc private func showInFinder(_ sender: NSMenuItem) {
+        guard let target = menuNote(sender) else { return }
+        note("Show in Finder \(target.title)")
+        flush(target)
+        NSWorkspace.shared.activateFileViewerSelecting([target.url])
+    }
+
+    @objc private func copyNote(_ sender: NSMenuItem) {
+        guard let target = menuNote(sender) else { return }
+        note("Copy \(target.title)")
+        flush(target)
+        do {
+            let text = try store.library.read(target)
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        } catch {
+            Alerts.showError("Couldn’t copy “\(target.title)”", error)
+        }
+    }
+
+    /// A copy named after its first line ("Groceries 2"), opened here.
+    @objc private func duplicateNote(_ sender: NSMenuItem) {
+        guard let target = menuNote(sender) else { return }
+        note("Duplicate \(target.title)")
+        flush(target)
+        do {
+            let copy = try store.library.create(text: try store.library.read(target))
+            store.reload()
+            open(copy)
+        } catch {
+            Alerts.showError("Couldn’t duplicate “\(target.title)”", error)
+        }
+    }
+
+    @objc private func togglePin(_ sender: NSMenuItem) {
+        guard let target = menuNote(sender) else { return }
+        note("\(target.isPinned ? "Unpin" : "Pin") \(target.title)")
+        do {
+            try store.library.setPinned(target, !target.isPinned)
+        } catch {
+            Alerts.showError("Couldn’t \(target.isPinned ? "unpin" : "pin") “\(target.title)”", error)
+        }
+        store.reload()
     }
 
     @objc private func deleteSelectedNote() {
@@ -357,7 +504,7 @@ final class NotesPanelController: NSViewController {
             saveTask?.cancel()
             hasUnsavedEdits = false
             isDraft = false
-            editor.string = ""
+            clearEditor()
             reloadList()
             updatePlaceholder()
             return
@@ -368,9 +515,11 @@ final class NotesPanelController: NSViewController {
             saveTask?.cancel()
             hasUnsavedEdits = false
             current = nil
-            editor.string = ""
+            clearEditor()
             lastNoteName = nil
         }
+        // Its window saves what it has, then closes, so the Trash gets the latest.
+        windows.closeForTrash(target)
         do {
             try store.library.delete(target)
         } catch {
@@ -389,6 +538,7 @@ final class NotesPanelController: NSViewController {
 extension NotesPanelController: NSTextViewDelegate {
     func textDidChange(_ notification: Notification) {
         hasUnsavedEdits = true
+        editor.styleChecklists()
         if current == nil, !isDraft {
             // Typing with nothing open starts a new note.
             isDraft = true
@@ -413,11 +563,12 @@ extension NotesPanelController: NSTableViewDataSource, NSTableViewDelegate {
         let typed = editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : NoteNaming.title(for: editor.string)
         switch rows[row] {
         case .draft:
-            cell.show(title: typed ?? "New Note", detail: "Not saved yet")
+            cell.show(title: typed ?? "New Note", detail: "Not saved yet", pinned: false, windowed: false)
         case .note(let note):
             let isOpen = note.url.lastPathComponent == current?.url.lastPathComponent
             cell.show(title: isOpen ? (typed ?? note.title) : note.title,
-                      detail: note.modified.formatted(date: .abbreviated, time: .shortened))
+                      detail: note.modified.formatted(date: .abbreviated, time: .shortened),
+                      pinned: note.isPinned, windowed: windows.contains(note))
         }
         return cell
     }
@@ -485,12 +636,16 @@ extension NotesPanelController: NSTableViewDataSource, NSTableViewDelegate {
     }
 }
 
-/// A row in the notes list: title and when it was last edited.
+/// A row in the notes list: title and when it was last edited, with a pin if
+/// it's pinned and a window if it's open in its own.
 @MainActor
 final class NoteRowView: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("NoteRow")
     private let title = NSTextField(labelWithString: "")
     private let date = NSTextField(labelWithString: "")
+    private let pin = NSImageView()
+    private let windowBadge = NSImageView()
+    private lazy var badges = NSStackView(views: [windowBadge, pin])
 
     init() {
         super.init(frame: .zero)
@@ -503,23 +658,42 @@ final class NoteRowView: NSTableCellView {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 1
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        for badge in [pin, windowBadge] {
+            badge.contentTintColor = .secondaryLabelColor
+            badge.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+        badges.spacing = 3
+        badges.setContentCompressionResistancePriority(.required, for: .horizontal)
+        for view in [stack, badges] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
+        // The badges sit at the end of the title line; the date can run on under them.
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: badges.leadingAnchor, constant: -3),
+            badges.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            badges.centerYAnchor.constraint(equalTo: title.centerYAnchor),
         ])
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func show(title text: String, detail: String) {
+    func show(title text: String, detail: String, pinned: Bool, windowed: Bool) {
         title.font = UIScale.font(12, weight: .semibold)
         date.font = UIScale.font(10)
         title.stringValue = text
         date.stringValue = detail
-        toolTip = text
+        pin.image = pinned ? NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Pinned")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: UIScale.pt(9), weight: .semibold)) : nil
+        pin.isHidden = !pinned
+        windowBadge.image = windowed ? NSImage(systemSymbolName: "macwindow", accessibilityDescription: "In its own window")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: UIScale.pt(9), weight: .semibold)) : nil
+        windowBadge.isHidden = !windowed
+        let notes = [pinned ? "pinned" : nil, windowed ? "in its own window" : nil].compactMap { $0 }
+        toolTip = notes.isEmpty ? text : "\(text) (\(notes.joined(separator: ", ")))"
     }
 }
 
@@ -556,13 +730,5 @@ final class NotesTableView: NSTableView {
         guard row >= 0 else { return nil }
         selectRowIndexes([row], byExtendingSelection: false)
         return contextMenu?()
-    }
-}
-
-/// The note editor. Esc goes to the panel (which saves and closes) instead of
-/// the text view's usual "suggest completions".
-final class NoteTextView: NSTextView {
-    override func cancelOperation(_ sender: Any?) {
-        window?.cancelOperation(sender)
     }
 }
