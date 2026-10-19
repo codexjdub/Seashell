@@ -33,7 +33,7 @@ After that it opens normally. Its icon appears in the menu bar, and a welcome wi
 
 - **Pull down at the top edge.** With the pointer at the very top of the screen, scroll down: two fingers on a trackpad, or the mouse wheel. Push up to close.
 - **Keyboard shortcut.** ⌃⌥S from any app. Settings offers ⌃⌥⌘S and ⌃⌥Z too, or Off.
-- **Menu bar icon.** Click it and choose Open Seashell.
+- **Menu bar icon.** Click it and choose Open Seashell, a shelf, or All Notes.
 - **Hold a drag at the top edge** for half a second while dragging something.
 
 It closes on a click elsewhere, Esc, pushing up, or the same shortcut. The pin keeps it open.
@@ -86,11 +86,11 @@ Open Settings from the menu bar icon, with ⌘, in the panel, or by clicking the
 - Keyboard shortcut
 - Pull down at the top edge to open the panel
 
-To see the welcome tips again, click the menu bar icon and choose Tips….
+The menu bar icon's menu also lists your shelves, with how many items each holds, and how many notes you have. Choosing a shelf, or All Notes, opens the panel there, and Show in Finder opens `~/Documents/Seashell`. Tips… shows the welcome tips again. About Seashell shows the version and has a Check for Updates… button, which asks GitHub for the newest release and offers its download page if it's newer.
 
 ## Privacy and resources
 
-- No accounts, analytics or tracking. Seashell goes online only to fetch a picture you dragged from a web page, when the browser didn't hand over the file itself.
+- No accounts, analytics or tracking. Seashell goes online only to fetch a picture you dragged from a web page (when the browser didn't hand over the file itself), and to ask GitHub for the newest version when you choose Check for Updates.
 - It needs no Accessibility or Input Monitoring permission.
 - It stays out of the way: no CPU use while idle and about 17 MB of memory at launch. It ignores ordinary pointer movement, watching only drags, scrolls (for pulling down) and the pointer while ⌥ is held.
 

@@ -178,6 +178,12 @@ final class StashPanelController: NSViewController {
         grid.selectItems(at: Set(reselect), scrollPosition: [])
     }
 
+    /// Shows the shelf called `name`, if there is one.
+    func select(shelfNamed name: String) {
+        guard store.shelves.contains(where: { $0.name == name }) else { return }
+        show(shelfNamed: name)
+    }
+
     private func show(shelfNamed name: String) {
         currentShelfName = name
         items = []

@@ -53,7 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.notesStore = notesStore
         let panel = PanelController(store: store, notesStore: notesStore, mover: mover, dropper: dropper)
         self.panel = panel
-        menuBar = MenuBarController(store: store, dropper: dropper, panel: panel, settings: settingsWindow, tips: tipsWindow)
+        menuBar = MenuBarController(store: store, notesStore: notesStore, dropper: dropper, panel: panel,
+                                    settings: settingsWindow, tips: tipsWindow)
         tipsWindow.onOpenPanel = { panel.open(reason: "tips") }
         panel.openSettings = { [settingsWindow] in settingsWindow.show() }
         settingsWindow.panelFrame = { panel.shownFrame }

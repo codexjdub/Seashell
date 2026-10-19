@@ -35,6 +35,14 @@ enum Alerts {
         return run(alert) == .alertFirstButtonReturn ? field.stringValue : nil
     }
 
+    /// Just tells you something.
+    static func tell(_ message: String, detail: String) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = detail
+        _ = run(alert)
+    }
+
     static func showError(_ message: String, _ error: any Error) {
         Log.error("\(message): \(error.localizedDescription)")
         let alert = NSAlert()

@@ -53,6 +53,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundleVersion</key><string>$BUILD</string>
     <key>LSMinimumSystemVersion</key><string>27.0</string>
     <key>LSUIElement</key><true/>
+    <key>NSHumanReadableCopyright</key><string>© 2026 codexjdub</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSDocumentsFolderUsageDescription</key><string>Seashell keeps your stashed files and notes in Documents/Seashell so iCloud can sync them.</string>
 </dict>

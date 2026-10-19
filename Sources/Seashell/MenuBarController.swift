@@ -6,14 +6,18 @@ import SeashellCore
 final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDraggingDestination {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let store: StashStore
+    private let notesStore: NotesStore
     private let dropper: StashDropper
     private let panel: PanelController
     private let settings: SettingsWindow
     private let tips: TipsWindow
+    private let about = AboutWindow()
     private let menu = NSMenu()
 
-    init(store: StashStore, dropper: StashDropper, panel: PanelController, settings: SettingsWindow, tips: TipsWindow) {
+    init(store: StashStore, notesStore: NotesStore, dropper: StashDropper, panel: PanelController,
+         settings: SettingsWindow, tips: TipsWindow) {
         self.store = store
+        self.notesStore = notesStore
         self.dropper = dropper
         self.panel = panel
         self.settings = settings
@@ -44,18 +48,11 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         Log.info("Menu opened (panel \(panel.stateDescription))")
     }
 
+    /// The panel first; then the shelves and the notes, with counts, each opening
+    /// the panel there; then settings; then Tips and About; then Quit.
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        for shelf in store.shelves {
-            let count = store.items(in: shelf).count
-            menu.addItem(NSMenuItem(title: "\(shelf.name): \(count) \(count == 1 ? "item" : "items")", action: nil, keyEquivalent: ""))
-        }
-        let show = NSMenuItem(title: "Show Stash in Finder", action: #selector(showStash), keyEquivalent: "")
-        show.target = self
-        menu.addItem(show)
-        menu.addItem(.separator())
-        let toggle = NSMenuItem(title: panel.isShowing ? "Close Seashell" : "Open Seashell", action: #selector(togglePanel), keyEquivalent: "")
-        toggle.target = self
+        let toggle = item(panel.isShowing ? "Close Seashell" : "Open Seashell", #selector(togglePanel))
         // Shows the keyboard shortcut from Settings beside it.
         let shortcut = AppSettings.shared.panelShortcut
         if let letter = shortcut.letter {
@@ -63,23 +60,56 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
             toggle.keyEquivalentModifierMask = shortcut == .controlOptionCommandS ? [.control, .option, .command] : [.control, .option]
         }
         menu.addItem(toggle)
+        menu.addItem(.separator())
+
+        // Grey headings, with their rows indented under them.
+        menu.addItem(.sectionHeader(title: "Stash"))
+        for shelf in store.shelves {
+            let shelfItem = item(shelf.name, #selector(openShelf), represents: shelf.name)
+            shelfItem.badge = NSMenuItemBadge(count: store.items(in: shelf).count)
+            shelfItem.indentationLevel = 1
+            menu.addItem(shelfItem)
+        }
+        menu.addItem(.sectionHeader(title: "Notes"))
+        let notes = item("All Notes", #selector(openNotes))
+        notes.badge = NSMenuItemBadge(count: notesStore.notes.count)
+        notes.indentationLevel = 1
+        menu.addItem(notes)
+        menu.addItem(.separator())
+
+        menu.addItem(item("Show in Finder", #selector(showFolder)))
+
         // For the app you're in (opening this menu leaves it in front).
         if let app = NSWorkspace.shared.frontmostApplication, app != .current, let id = app.bundleIdentifier {
-            let item = NSMenuItem(title: "Ignore Shakes in \(app.localizedName ?? id)", action: #selector(toggleIgnoreShakes),
-                                  keyEquivalent: "")
-            item.target = self
-            item.representedObject = id
-            item.state = AppSettings.shared.shakeIgnoredApps.contains(id) ? .on : .off
-            menu.addItem(item)
+            let ignore = item("Ignore Shakes in \(app.localizedName ?? id)", #selector(toggleIgnoreShakes), represents: id)
+            ignore.state = AppSettings.shared.shakeIgnoredApps.contains(id) ? .on : .off
+            menu.addItem(ignore)
         }
-        menu.addItem(.separator())
-        let tipsItem = NSMenuItem(title: "Tips…", action: #selector(openTips), keyEquivalent: "")
-        tipsItem.target = self
-        menu.addItem(tipsItem)
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.target = self
+        let settingsItem = item("Settings…", #selector(openSettings))
+        settingsItem.keyEquivalent = ","
         menu.addItem(settingsItem)
+        menu.addItem(.separator())
+
+        menu.addItem(item("Tips…", #selector(openTips)))
+        menu.addItem(item("About Seashell", #selector(openAbout)))
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Seashell", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    }
+
+    private func item(_ title: String, _ action: Selector, represents value: String? = nil) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.representedObject = value
+        return item
+    }
+
+    @objc private func openShelf(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        panel.open(shelfNamed: name, reason: "menu: shelf \(name)")
+    }
+
+    @objc private func openNotes() {
+        panel.openNotes(reason: "menu: Notes")
     }
 
     @objc private func toggleIgnoreShakes(_ sender: NSMenuItem) {
@@ -92,6 +122,10 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         tips.show()
     }
 
+    @objc private func openAbout() {
+        about.show()
+    }
+
     @objc private func openSettings() {
         settings.show()
     }
@@ -100,9 +134,10 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         panel.toggle(reason: "menu")
     }
 
-    @objc private func showStash() {
-        Log.info("Menu: Show Stash in Finder")
-        NSWorkspace.shared.open(store.library.stash)
+    /// `~/Documents/Seashell`, which holds both Stash and Notes.
+    @objc private func showFolder() {
+        Log.info("Menu: Show in Finder")
+        NSWorkspace.shared.open(store.library.stash.deletingLastPathComponent())
     }
 
     // MARK: Drop onto the icon

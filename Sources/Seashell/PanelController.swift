@@ -163,6 +163,18 @@ final class PanelController: NSObject {
         Log.info("Panel opened on \(screen.localizedName) (\(reason))")
     }
 
+    /// Opens on the shelf called `name`, e.g. chosen in the menu bar menu.
+    func open(shelfNamed name: String, reason: String) {
+        open(reason: reason)
+        stash.select(shelfNamed: name)
+    }
+
+    /// Opens with the keyboard in Notes, on the note you had open last.
+    func openNotes(reason: String) {
+        open(reason: reason)
+        notes.focusEditor()
+    }
+
     func close(reason: String) {
         guard isOpen else { return }
         isOpen = false

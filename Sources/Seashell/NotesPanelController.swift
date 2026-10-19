@@ -251,6 +251,11 @@ final class NotesPanelController: NSViewController {
         updatePlaceholder()
     }
 
+    /// Puts the keyboard in the editor.
+    func focusEditor() {
+        view.window?.makeFirstResponder(editor)
+    }
+
     @objc func newNote() {
         note("new note")
         guard leaveCurrent() else { return }
