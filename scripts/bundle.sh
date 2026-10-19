@@ -13,6 +13,9 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PRODUCT=Seashell
 BUNDLE_ID=io.github.codexjdub.seashell
+VERSION=0.1.0
+# The commit count only goes up, so each build has a higher build number.
+BUILD=$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)
 
 if [[ -n ${SIGN_IDENTITY:-} ]]; then
     IDENTITY=$SIGN_IDENTITY
@@ -46,8 +49,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
     <key>CFBundleName</key><string>$PRODUCT</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>$VERSION</string>
+    <key>CFBundleVersion</key><string>$BUILD</string>
     <key>LSMinimumSystemVersion</key><string>27.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>

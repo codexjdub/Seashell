@@ -4,6 +4,17 @@ A shelf for your Mac that slides down from under the menu bar. Drop files, folde
 
 Everything lives as ordinary files in `~/Documents/Seashell`, so iCloud syncs it to your other Macs and Finder can always see it.
 
+## Download
+
+Seashell needs macOS 27 or later on a Mac with Apple silicon.
+
+1. Download `Seashell-<version>.zip` from the [latest release](https://github.com/codexjdub/Seashell/releases/latest) and open it.
+2. Move Seashell to your Applications folder.
+3. Open it. The first time, macOS says **“Seashell.app” Not Opened**, because Seashell isn't notarized by Apple. Click **Done**, not Move to Trash.
+4. Open System Settings ▸ Privacy & Security, scroll down to Security, click **Open Anyway** next to the message about Seashell, and confirm.
+
+After that it opens normally. Its icon appears in the menu bar, and a welcome window shows how to reach it.
+
 ## What it does
 
 - **Shelves.** Stash things on Main, or make as many shelves as you like. Drag tabs to reorder them.
@@ -78,18 +89,20 @@ To see the welcome tips again, click the menu bar icon and choose Tips….
 - It needs no Accessibility or Input Monitoring permission.
 - It stays out of the way: no CPU use while idle and about 17 MB of memory at launch. It ignores ordinary pointer movement, watching only drags, scrolls (for pulling down) and the pointer while ⌥ is held.
 
-## Requirements
-
-macOS 27 or later.
-
 ## Building from source
 
 You need Xcode, or just the Command Line Tools, with the macOS 27 SDK. There's no Xcode project: it's a Swift package.
 
-Clone the repository, then build, install to `/Applications` and open it:
+Clone the repository:
 
 ```bash
-scripts/run.sh
+git clone https://github.com/codexjdub/Seashell.git
+```
+
+Then build it, install it to `/Applications` and open it:
+
+```bash
+cd Seashell && scripts/run.sh
 ```
 
 It signs the app ad hoc, which works but can make macOS treat each rebuild as a new app when it comes to permissions. To keep one identity across rebuilds, make a certificate of your own: open Keychain Access (search for it in Spotlight), choose Keychain Access ▸ Certificate Assistant ▸ Create a Certificate, and set the type to Code Signing. Then build with its name:
@@ -108,7 +121,11 @@ scripts/test.sh
 scripts/make-icon.sh
 ```
 
-`test.sh` runs the unit tests and `make-icon.sh` rebuilds the app icon from `Resources/AppIcon.svg`. Build output goes to `~/Library/Caches/Seashell`, outside iCloud. Seashell writes a readable log to `~/Library/Logs/Seashell/Seashell.log`, trimmed at launch once it passes 1 MB.
+```bash
+scripts/release.sh
+```
+
+`test.sh` runs the unit tests, `make-icon.sh` rebuilds the app icon from `Resources/AppIcon.svg`, and `release.sh` builds the zip for a GitHub release (it needs a signing certificate, not ad hoc). The version is set in `scripts/bundle.sh`. Build output goes to `~/Library/Caches/Seashell`, outside iCloud. Seashell writes a readable log to `~/Library/Logs/Seashell/Seashell.log`, trimmed at launch once it passes 1 MB.
 
 ## Uninstalling
 
