@@ -13,7 +13,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PRODUCT=Seashell
 BUNDLE_ID=io.github.codexjdub.seashell
-VERSION=0.1.0
+VERSION=0.1.1
 # The commit count only goes up, so each build has a higher build number.
 BUILD=$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)
 
