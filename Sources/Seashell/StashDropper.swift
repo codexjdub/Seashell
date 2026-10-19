@@ -2,8 +2,8 @@ import AppKit
 import SeashellCore
 
 /// Turns a drop (files, promised files, links, images, text) into Stash items.
-/// Shared by every drop target that stashes: the menu bar icon now, the panel
-/// and floating shelf later.
+/// Shared by every drop target that stashes (the menu bar icon, the panel, the
+/// floating shelf and tear-off shelves) and by Paste.
 @MainActor
 final class StashDropper {
     static let acceptedTypes: [NSPasteboard.PasteboardType] =

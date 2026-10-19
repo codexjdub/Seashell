@@ -2,7 +2,7 @@ import AppKit
 import Observation
 import SeashellCore
 
-/// The text size chosen in the menu bar menu or with ⌘+ / ⌘− / ⌘0, remembered
+/// The text size chosen in Settings or with ⌘+ / ⌘− / ⌘0, remembered
 /// on this Mac. Views read it inside `observeChanges`, so they update at once.
 @MainActor @Observable
 final class TextSizeSetting {

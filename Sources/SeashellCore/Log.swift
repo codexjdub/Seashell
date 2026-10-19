@@ -2,7 +2,7 @@ import Foundation
 import os
 
 /// Logs to the unified system log and to `~/Library/Logs/Seashell/Seashell.log`,
-/// the file we read together when testing.
+/// a readable file for testing and troubleshooting.
 public enum Log {
     public static let fileURL = URL.libraryDirectory.appending(path: "Logs/Seashell/Seashell.log")
 

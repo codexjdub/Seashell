@@ -2,8 +2,9 @@ import AppKit
 import SeashellCore
 
 /// The app icon pressed onto the right edge of Seashell's panels like a seal:
-/// the pull-down panel, the grab shelf and the drop shelf. About a third of the
-/// visible icon sticks out past the edge. Sizes are at Small text, scaled.
+/// the pull-down panel, the grab shelf, the drop shelf and tear-off shelves.
+/// About a third of the visible icon sticks out past the edge. Sizes are at
+/// Small text, scaled.
 @MainActor
 enum Seal {
     static let size: CGFloat = 42
