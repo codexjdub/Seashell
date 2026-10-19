@@ -4,6 +4,11 @@ A shelf for your Mac that slides down from under the menu bar. Drop files, folde
 
 Everything lives as ordinary files in `~/Documents/Seashell`, so iCloud syncs it to your other Macs and Finder can always see it.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/panel-dark.png">
+  <img src="docs/panel-light.png" alt="Seashell's panel below the menu bar: shelf tabs Main, Work and Trip above a picture, a text snippet, a PDF, a link, a moodboard and a folder, with a list of notes and an open grocery list on the right">
+</picture>
+
 ## Download
 
 Seashell needs macOS 27 or later on a Mac with Apple silicon.
