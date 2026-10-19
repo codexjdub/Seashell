@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
             return
         }
+        Log.trimFile()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         Log.info("Seashell \(version) launched from \(Bundle.main.bundlePath)")
 

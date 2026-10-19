@@ -23,6 +23,25 @@ public enum Log {
         appendToFile("ERROR " + message)
     }
 
+    /// Once the file passes this size, launching keeps only its newest half,
+    /// so it can't grow forever.
+    static let sizeLimit = 1_000_000
+
+    /// Called at launch, before anything is logged.
+    public static func trimFile() {
+        guard writesFile else { return }
+        queue.async { trim(fileURL, limit: sizeLimit) }
+    }
+
+    /// Keeps the newest half of the file if it's over `limit` bytes, starting
+    /// at a whole line.
+    static func trim(_ url: URL, limit: Int) {
+        guard let data = try? Data(contentsOf: url), data.count > limit else { return }
+        var kept = data.suffix(limit / 2)
+        if let newline = kept.firstIndex(of: UInt8(ascii: "\n")) { kept = kept[(newline + 1)...] }
+        try? Data(kept).write(to: url, options: .atomic)
+    }
+
     private static func appendToFile(_ message: String) {
         guard writesFile else { return }
         let line = Data("[\(Date.now.formatted(timestamp))] \(message)\n".utf8)
