@@ -6,6 +6,10 @@ import SeashellCore
 @MainActor
 final class PanelController: NSObject {
     private static let pinnedKey = "panelPinned"
+    /// Just below the menu bar's, so it slides out from under it.
+    static let level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue - 1)
+    /// For the shelves that pop up at the pointer, which go over the panel.
+    static let shelfLevel = NSWindow.Level(rawValue: level.rawValue + 1)
 
     private(set) var isOpen = false {
         didSet { if isOpen != oldValue { onOpenChanged?() } }
@@ -375,9 +379,9 @@ final class PanelController: NSObject {
         let panel = SeashellPanel(contentRect: NSRect(x: 0, y: 0, width: PanelGeometry.maxWidth, height: PanelGeometry.height),
                                   styleMask: [.borderless, .nonactivatingPanel],
                                   backing: .buffered, defer: false)
-        // Just below the menu bar's level, so it slides out from under it.
-        panel.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue - 1)
+        // Floating first: setting it resets the level to .floating.
         panel.isFloatingPanel = true
+        panel.level = PanelController.level
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.isOpaque = false

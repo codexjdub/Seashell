@@ -133,8 +133,9 @@ final class FloatingShelf {
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: Self.size(zones: 1)),
                             styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered, defer: false)
-        panel.level = .floating
+        // Over the pull-down panel. Floating first: setting it resets the level.
         panel.isFloatingPanel = true
+        panel.level = PanelController.shelfLevel
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.isOpaque = false

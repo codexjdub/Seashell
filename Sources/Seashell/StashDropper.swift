@@ -14,9 +14,13 @@ final class StashDropper {
 
     private let mover: FileMover
     private let promiseQueue = OperationQueue()
+    /// Where promised files land before they move into a shelf.
+    private static let incomingRoot = URL.temporaryDirectory.appending(path: "Seashell-Incoming", directoryHint: .isDirectory)
 
     init(mover: FileMover) {
         self.mover = mover
+        // Nothing is on its way in at launch: whatever is here was left behind.
+        try? FileManager.default.removeItem(at: Self.incomingRoot)
     }
 
     /// Answer `move` only for files: Finder leaves the moving to us. A text
@@ -66,8 +70,11 @@ final class StashDropper {
             case let url as URL:
                 run("link") { try $0.stash(link: url, title: pasteboard.string(forType: Self.urlTitleType), into: shelf) }
             case let image as NSImage:
-                guard let data = image.tiffRepresentation else { continue }
-                run("image") { try $0.stash(imageData: data, into: shelf) }
+                // A lone picture's PNG goes in as it is, rather than through a
+                // full-size TIFF; anything else is converted in the background.
+                let png = objects.count == 1 ? pasteboard.data(forType: .png) : nil
+                guard let data = png ?? image.tiffRepresentation else { continue }
+                runInBackground("image") { try $0.stash(imageData: data, into: shelf) }
             case let text as String:
                 run("text") { try $0.stash(text: text, into: shelf) }
             default:
@@ -107,7 +114,7 @@ final class StashDropper {
     /// dropped. It is written to a temporary folder on the same disk, then moved
     /// into the shelf.
     private func receive(_ receiver: NSFilePromiseReceiver, into shelf: URL, fallback: PromiseFallback) {
-        let incoming = URL.temporaryDirectory.appending(path: "Seashell-Incoming/\(UUID().uuidString)", directoryHint: .isDirectory)
+        let incoming = Self.incomingRoot.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         do {
             try FileManager.default.createDirectory(at: incoming, withIntermediateDirectories: true)
         } catch {
@@ -118,6 +125,7 @@ final class StashDropper {
         // main-thread-only (it's written inside a main-actor method) and stop the app.
         receiver.receivePromisedFiles(atDestination: incoming, options: [:], operationQueue: promiseQueue) { @Sendable file, error in
             Task { @MainActor in
+                defer { Self.cleanUp(file, in: incoming) }
                 if let error {
                     self.report("Couldn’t receive “\(file.lastPathComponent)”", error)
                     return
@@ -153,7 +161,7 @@ final class StashDropper {
         }
         if let data = fallback.imageData {
             Log.info("Saved the dragged picture data instead of \(name)")
-            run("picture") { try $0.stash(imageData: data, into: shelf) }
+            runInBackground("picture") { try $0.stash(imageData: data, into: shelf) }
             return
         }
         report("Couldn’t get “\(name)”", DropError.neverWritten)
@@ -175,6 +183,27 @@ final class StashDropper {
             try body(mover)
         } catch {
             report("Couldn’t stash the \(what)", error)
+        }
+    }
+
+    /// Like `run`, off the main thread: converting a big picture takes a moment.
+    private func runInBackground(_ what: String, _ body: @escaping @Sendable (FileMover) throws -> Void) {
+        let mover = self.mover
+        Task {
+            do {
+                try await Task.detached { try body(mover) }.value
+            } catch {
+                report("Couldn’t stash the \(what)", error)
+            }
+        }
+    }
+
+    /// Once a promised file has moved into a shelf (or couldn't), what's left of
+    /// it goes, and its folder too once empty.
+    private static func cleanUp(_ file: URL, in folder: URL) {
+        try? FileManager.default.removeItem(at: file)
+        if (try? FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false)))?.isEmpty == true {
+            try? FileManager.default.removeItem(at: folder)
         }
     }
 

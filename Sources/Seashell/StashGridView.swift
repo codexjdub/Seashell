@@ -185,22 +185,32 @@ final class StashItemCell: NSCollectionViewItem {
     func configure(with item: StashItem, thumbnails: ThumbnailLoader) {
         applyTextSize()
         shownURL = item.url
-        let cloudOnly = CloudStatus.state(of: item.url) == .cloudOnly
+        let cloudOnly = item.cloud == .cloudOnly
         cloudBadge.isHidden = !cloudOnly
         let title = item.url.deletingPathExtension().lastPathComponent
 
         switch item.kind {
         case .text:
             show(.text)
-            let preview = ItemContent.preview(of: item.url, maxCharacters: 1000)
-            noteText.stringValue = preview.map { String($0.prefix(400)) } ?? title
-            view.toolTip = preview ?? (cloudOnly ? "\(title) (in iCloud)" : title)
+            // Read in the background (file coordination can wait on iCloud); the
+            // title stands in until then.
+            let showText: @MainActor @Sendable (String?) -> Void = { [weak self] preview in
+                guard let self, self.shownURL == item.url else { return }
+                self.noteText.stringValue = preview.map { String($0.prefix(400)) } ?? title
+                self.view.toolTip = preview ?? (cloudOnly ? "\(title) (in iCloud)" : title)
+            }
+            showText(thumbnails.cachedText(for: item))
+            thumbnails.loadText(item, completion: showText)
         case .link:
             show(.link)
-            let link = ItemContent.link(of: item.url)
             linkTitle.stringValue = title
-            linkSite.stringValue = link?.host(percentEncoded: false)?.replacingOccurrences(of: "www.", with: "") ?? ""
-            view.toolTip = link?.absoluteString ?? title
+            let showLink: @MainActor @Sendable (URL?) -> Void = { [weak self] link in
+                guard let self, self.shownURL == item.url else { return }
+                self.linkSite.stringValue = link?.host(percentEncoded: false)?.replacingOccurrences(of: "www.", with: "") ?? ""
+                self.view.toolTip = link?.absoluteString ?? title
+            }
+            showLink(thumbnails.cachedLink(for: item))
+            thumbnails.loadLink(item, completion: showLink)
         case .file, .folder:
             show(.file)
             name.stringValue = item.name
@@ -315,10 +325,49 @@ final class CardView: NSView {
     }
 }
 
-/// Quick Look thumbnails, cached per file and modification date.
+/// What tiles show that has to be read from disk: Quick Look thumbnails, and
+/// the text or address of text and link items. Loaded in the background and
+/// cached per file and modification date.
 @MainActor
 final class ThumbnailLoader {
     private let cache = NSCache<NSString, NSImage>()
+    private let texts = NSCache<NSString, NSString>()
+    private let links = NSCache<NSString, NSURL>()
+
+    func cachedText(for item: StashItem) -> String? {
+        texts.object(forKey: key(for: item) as NSString) as String?
+    }
+
+    /// Nil if it can't be read (too big, not text, or only in iCloud).
+    func loadText(_ item: StashItem, completion: @escaping @MainActor (String?) -> Void) {
+        let key = key(for: item)
+        if texts.object(forKey: key as NSString) != nil { return }
+        let url = item.url
+        Task { [weak self] in
+            let preview = await Task.detached { ItemContent.preview(of: url, maxCharacters: 1000) }.value
+            if let preview { self?.texts.setObject(preview as NSString, forKey: key as NSString) }
+            completion(preview)
+        }
+    }
+
+    func cachedLink(for item: StashItem) -> URL? {
+        links.object(forKey: key(for: item) as NSString) as URL?
+    }
+
+    func loadLink(_ item: StashItem, completion: @escaping @MainActor (URL?) -> Void) {
+        let key = key(for: item)
+        if links.object(forKey: key as NSString) != nil { return }
+        let url = item.url
+        Task { [weak self] in
+            let link = await Task.detached { ItemContent.link(of: url) }.value
+            if let link { self?.links.setObject(link as NSURL, forKey: key as NSString) }
+            completion(link)
+        }
+    }
+
+    private func key(for item: StashItem) -> String {
+        "\(item.url.path(percentEncoded: false))|\(item.modified?.timeIntervalSince1970 ?? 0)"
+    }
 
     func cached(for url: URL) -> NSImage? {
         cache.object(forKey: key(for: url) as NSString)

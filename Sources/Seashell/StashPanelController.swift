@@ -69,9 +69,10 @@ final class StashPanelController: NSViewController {
         grid.dataSource = self
         grid.delegate = self
         grid.registerForDraggedTypes(StashDropper.acceptedTypes)
-        // Out to other apps: a copy, the item stays. Within Seashell: onto a tab, to move it.
+        // Out to other apps: a copy, the item stays. Within Seashell: onto a tab to
+        // move it, or onto the notes list, which takes a copy of its text.
         grid.setDraggingSourceOperationMask(.copy, forLocal: false)
-        grid.setDraggingSourceOperationMask(.move, forLocal: true)
+        grid.setDraggingSourceOperationMask([.move, .copy], forLocal: true)
         grid.onOpen = { [weak self] in self?.openSelection() }
         grid.onDelete = { [weak self] in self?.deleteSelection() }
         grid.contextMenu = { [weak self] in self?.itemMenu() }

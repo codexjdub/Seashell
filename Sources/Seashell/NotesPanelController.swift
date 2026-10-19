@@ -38,6 +38,10 @@ final class NotesPanelController: NSViewController {
     private var hasUnsavedEdits = false
     private var saveTask: Task<Void, Never>?
     private var isSelectingProgrammatically = false
+    /// While a note is dragged out of the list, the list holds still (reloading
+    /// it would change the rows under the drag); it catches up when the drag ends.
+    private var isDraggingOut = false
+    private var listIsStale = false
     private let headerTitle = NSTextField(labelWithString: "Notes")
     private var headerHeight: NSLayoutConstraint?
     private var listWidth: NSLayoutConstraint?
@@ -168,7 +172,11 @@ final class NotesPanelController: NSViewController {
     // MARK: Following the store
 
     private func refresh() {
-        let newNotes = store.notes
+        let newNotes = store.notes  // read first: that's what keeps this running on changes
+        guard !isDraggingOut else {
+            listIsStale = true
+            return
+        }
         if let current, !hasUnsavedEdits {
             if let onDisk = newNotes.first(where: { $0.url.lastPathComponent == current.url.lastPathComponent }) {
                 if onDisk.modified.timeIntervalSince(current.modified) > 0.001 {
@@ -225,7 +233,7 @@ final class NotesPanelController: NSViewController {
     // MARK: Opening, saving, leaving
 
     private func open(_ note: Note) {
-        leaveCurrent()
+        guard leaveCurrent() else { return selectCurrentRow() }
         guard let fresh = store.library.note(at: note.url) else { return }
         load(fresh)
         lastNoteName = fresh.url.lastPathComponent
@@ -245,7 +253,7 @@ final class NotesPanelController: NSViewController {
 
     @objc func newNote() {
         note("new note")
-        leaveCurrent()
+        guard leaveCurrent() else { return }
         isDraft = true
         editor.string = ""
         reloadList()
@@ -262,11 +270,13 @@ final class NotesPanelController: NSViewController {
         }
     }
 
-    /// Writes pending edits. A new note gets its file now, named after its first line.
-    private func saveNow() {
+    /// Writes pending edits. A new note gets its file now, named after its first
+    /// line. False if they couldn't be saved.
+    @discardableResult
+    private func saveNow() -> Bool {
         saveTask?.cancel()
         saveTask = nil
-        guard hasUnsavedEdits else { return }
+        guard hasUnsavedEdits else { return true }
         let text = editor.string
         do {
             if let current {
@@ -282,16 +292,24 @@ final class NotesPanelController: NSViewController {
             hasUnsavedEdits = false
             lastNoteName = current?.url.lastPathComponent
             store.reload()
-            notes = store.notes
-            reloadList()
+            if isDraggingOut {
+                listIsStale = true
+            } else {
+                notes = store.notes
+                reloadList()
+            }
+            return true
         } catch {
             Alerts.showError("Couldn’t save the note", error)
+            return false
         }
     }
 
     /// Saves, then renames the note to its first line, or trashes it if it's empty.
-    private func leaveCurrent() {
-        saveNow()
+    /// If it couldn't be saved, it stays open with its text, and this returns false.
+    @discardableResult
+    private func leaveCurrent() -> Bool {
+        guard saveNow() else { return false }
         defer {
             editor.string = ""
             reloadList()
@@ -301,7 +319,7 @@ final class NotesPanelController: NSViewController {
             isDraft = false
             note("empty new note discarded")
         }
-        guard let leaving = current else { return }
+        guard let leaving = current else { return true }
         current = nil
         do {
             if editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -314,6 +332,7 @@ final class NotesPanelController: NSViewController {
             Log.error("Couldn’t tidy up note \(leaving.title): \(error.localizedDescription)")
         }
         store.reload()
+        return true
     }
 
     // MARK: List actions
@@ -414,6 +433,7 @@ extension NotesPanelController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
         guard case .note(let dragged) = rows[row] else { return nil }  // a new note has nothing to drag yet
+        isDraggingOut = true
         if dragged.url.lastPathComponent == current?.url.lastPathComponent { saveNow() }
         let text = (try? store.library.read(dragged)) ?? ""
         note("dragging out \(dragged.title)")
@@ -422,6 +442,11 @@ extension NotesPanelController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession,
                    endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        isDraggingOut = false
+        if listIsStale {
+            listIsStale = false
+            refresh()
+        }
         note(operation.isEmpty ? "drag out ended: not taken" : "drag out ended: taken")
         if !operation.isEmpty { onDraggedOut?(screenPoint) }
     }
@@ -442,7 +467,7 @@ extension NotesPanelController: NSTableViewDataSource, NSTableViewDelegate {
         guard let text = info.draggingPasteboard.string(forType: .string),
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         note("text dropped onto the list")
-        leaveCurrent()
+        guard leaveCurrent() else { return false }
         do {
             let created = try store.library.create(text: text)
             store.reload()
