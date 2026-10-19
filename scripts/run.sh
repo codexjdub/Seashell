@@ -14,7 +14,7 @@ for _ in {1..50}; do
     sleep 0.1
 done
 
-"$ROOT/scripts/bundle.sh" "$ROOT" Seashell "$BUNDLE_ID" --agent
+"$ROOT/scripts/bundle.sh"
 
 rm -rf "$INSTALLED"
 ditto "$BUILT" "$INSTALLED"

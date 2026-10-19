@@ -1,61 +1,55 @@
 #!/bin/bash
-# Build a SwiftPM executable and wrap it in a signed .app bundle.
+# Build Seashell and wrap it in a signed .app bundle.
 #
-# Usage: scripts/bundle.sh <package-dir> <product> <bundle-id> [--agent]
-#   --agent   menu bar app: no Dock icon (LSUIElement)
-#
-# Signs with the "codexjdub" identity (override with SIGN_IDENTITY). Keeping the
-# same identity across builds keeps macOS privacy grants (Documents access).
+# Signs with SIGN_IDENTITY if set, else the maintainer's "codexjdub" certificate
+# if it's in the keychain, else ad hoc. Keeping the same certificate across
+# builds keeps macOS privacy grants (Documents access).
 #
 # Build output goes to ~/Library/Caches/Seashell, outside iCloud Drive: iCloud
 # tags bundles in Documents with Finder info that codesign rejects, and would
 # upload every build.
 set -euo pipefail
 
-if [[ $# -lt 3 ]]; then
-    echo "usage: $0 <package-dir> <product> <bundle-id> [--agent]" >&2
-    exit 64
-fi
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+PRODUCT=Seashell
+BUNDLE_ID=io.github.codexjdub.seashell
 
-PKG=$1
-PRODUCT=$2
-BUNDLE_ID=$3
-AGENT=false
-[[ ${4:-} == --agent ]] && AGENT=true
-IDENTITY=${SIGN_IDENTITY:-codexjdub}
+if [[ -n ${SIGN_IDENTITY:-} ]]; then
+    IDENTITY=$SIGN_IDENTITY
+elif security find-identity -v -p codesigning | grep -q '"codexjdub"'; then
+    IDENTITY=codexjdub
+else
+    IDENTITY=-
+    echo "No \"codexjdub\" certificate in the keychain, so signing ad hoc (set SIGN_IDENTITY to use your own)" >&2
+fi
 
 OUT="$HOME/Library/Caches/Seashell"
 SCRATCH="$OUT/.build-$PRODUCT"
 APP="$OUT/$PRODUCT.app"
 
-swift build -c release --package-path "$PKG" --scratch-path "$SCRATCH"
-BIN="$(swift build -c release --package-path "$PKG" --scratch-path "$SCRATCH" --show-bin-path)/$PRODUCT"
+swift build -c release --package-path "$ROOT" --scratch-path "$SCRATCH"
+BIN="$(swift build -c release --package-path "$ROOT" --scratch-path "$SCRATCH" --show-bin-path)/$PRODUCT"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$PRODUCT"
+cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
-# The app icon, if the package has one (scripts/make-icon.sh builds it).
-ICON_KEY=""
-if [[ -f "$PKG/Resources/AppIcon.icns" ]]; then
-    cp "$PKG/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-    ICON_KEY="<key>CFBundleIconFile</key><string>AppIcon</string>"
-fi
-
+# LSUIElement: a menu bar app, with no Dock icon.
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key><string>$PRODUCT</string>
-    $ICON_KEY
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
     <key>CFBundleName</key><string>$PRODUCT</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>27.0</string>
-    <key>LSUIElement</key><$AGENT/>
+    <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSDocumentsFolderUsageDescription</key><string>Seashell keeps your stashed files and notes in Documents/Seashell so iCloud can sync them.</string>
 </dict>
