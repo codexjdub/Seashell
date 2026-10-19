@@ -1,5 +1,6 @@
 #!/bin/bash
-# Build Seashell and wrap it in a signed .app bundle.
+# Build Seashell for Apple silicon and Intel and wrap it in one signed,
+# universal .app bundle.
 #
 # Signs with SIGN_IDENTITY if set, else the maintainer's "codexjdub" certificate
 # if it's in the keychain, else ad hoc. Keeping the same certificate across
@@ -14,6 +15,9 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PRODUCT=Seashell
 BUNDLE_ID=io.github.codexjdub.seashell
 VERSION=0.1.1
+# The oldest macOS it runs on; Package.swift says the same. macOS 26 is the last
+# for Intel Macs.
+MINIMUM_MACOS=26.0
 # The commit count only goes up, so each build has a higher build number.
 BUILD=$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)
 
@@ -30,12 +34,16 @@ OUT="$HOME/Library/Caches/Seashell"
 SCRATCH="$OUT/.build-$PRODUCT"
 APP="$OUT/$PRODUCT.app"
 
+# Apple silicon natively (sharing the tests' build folder), Intel by triple; then one binary.
 swift build -c release --package-path "$ROOT" --scratch-path "$SCRATCH"
-BIN="$(swift build -c release --package-path "$ROOT" --scratch-path "$SCRATCH" --show-bin-path)/$PRODUCT"
+ARM_BIN="$(swift build -c release --package-path "$ROOT" --scratch-path "$SCRATCH" --show-bin-path)/$PRODUCT"
+INTEL=(--triple "x86_64-apple-macosx$MINIMUM_MACOS" --scratch-path "$SCRATCH-x86_64")
+swift build -c release --package-path "$ROOT" "${INTEL[@]}"
+INTEL_BIN="$(swift build -c release --package-path "$ROOT" "${INTEL[@]}" --show-bin-path)/$PRODUCT"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/$PRODUCT"
+lipo -create "$ARM_BIN" "$INTEL_BIN" -output "$APP/Contents/MacOS/$PRODUCT"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 # LSUIElement: a menu bar app, with no Dock icon.
@@ -51,7 +59,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key><string>$BUILD</string>
-    <key>LSMinimumSystemVersion</key><string>27.0</string>
+    <key>LSMinimumSystemVersion</key><string>$MINIMUM_MACOS</string>
     <key>LSUIElement</key><true/>
     <key>NSHumanReadableCopyright</key><string>© 2026 codexjdub</string>
     <key>NSHighResolutionCapable</key><true/>

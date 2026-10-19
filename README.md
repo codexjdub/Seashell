@@ -11,7 +11,7 @@ Everything lives as ordinary files in `~/Documents/Seashell`, so iCloud syncs it
 
 ## Download
 
-Seashell needs macOS 27 or later on a Mac with Apple silicon.
+Seashell needs macOS 26 or later, on Apple silicon or Intel.
 
 1. Download `Seashell-<version>.zip` from the [latest release](https://github.com/codexjdub/Seashell/releases/latest) and open it.
 2. Move Seashell to your Applications folder.
@@ -96,7 +96,7 @@ The menu bar icon's menu also lists your shelves, with how many items each holds
 
 ## Building from source
 
-You need Xcode, or just the Command Line Tools, with the macOS 27 SDK. There's no Xcode project: it's a Swift package.
+You need Xcode, or just the Command Line Tools, with the macOS 26 SDK or later. There's no Xcode project: it's a Swift package.
 
 Clone the repository:
 

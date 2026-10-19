@@ -4,7 +4,8 @@
 #
 # Refuses to run with uncommitted changes, so the zip matches a commit, and
 # refuses an ad hoc signature: releases need a certificate (codexjdub, or
-# SIGN_IDENTITY; see bundle.sh) so updates keep the same identity.
+# SIGN_IDENTITY; see bundle.sh) so updates keep the same identity. The app must
+# be universal, for Apple silicon and Intel.
 #
 # Set NOTARY_PROFILE to a notarytool keychain profile to have Apple notarize the
 # app and staple the ticket. That needs a Developer ID certificate.
@@ -20,6 +21,12 @@ if [[ -n $(git -C "$ROOT" status --porcelain) ]]; then
 fi
 
 "$ROOT/scripts/bundle.sh"
+
+ARCHS=$(lipo -archs "$APP/Contents/MacOS/Seashell")
+if [[ $ARCHS != *arm64* || $ARCHS != *x86_64* ]]; then
+    echo "The app isn't universal (Apple silicon and Intel): $ARCHS" >&2
+    exit 1
+fi
 
 if codesign -dv "$APP" 2>&1 | grep -q "Signature=adhoc"; then
     echo "The app is signed ad hoc. Releases need a certificate: install codexjdub or set SIGN_IDENTITY." >&2

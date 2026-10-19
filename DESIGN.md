@@ -1,6 +1,6 @@
 # Seashell — Design
 
-A macOS drag-and-drop shelf. Personal tool, public on GitHub, distributed outside the App Store, not sandboxed. Targets macOS 27 only. Bundle ID `io.github.codexjdub.seashell`, MIT license.
+A macOS drag-and-drop shelf. Personal tool, public on GitHub, distributed outside the App Store, not sandboxed. Targets macOS 26 and later (26 is the last macOS for Intel Macs), as one universal app for Apple silicon and Intel. Bundle ID `io.github.codexjdub.seashell`, MIT license.
 
 ## Layout
 
@@ -157,7 +157,7 @@ Sources/
 Tests/SeashellCoreTests
 Resources/AppIcon.svg     the app icon's source drawing
 Resources/AppIcon.icns    built from it by scripts/make-icon.sh (svg2png.swift + iconutil)
-scripts/bundle.sh         swift build → Seashell.app (Info.plist, icon) → codesign: SIGN_IDENTITY, else codexjdub if it's in the keychain, else ad hoc
+scripts/bundle.sh         swift build for arm64 and x86_64 → lipo → Seashell.app (Info.plist, icon) → codesign: SIGN_IDENTITY, else codexjdub if it's in the keychain, else ad hoc
 scripts/run.sh            quit the running copy → bundle → install to /Applications → open
 scripts/test.sh           the unit tests
 scripts/release.sh        Seashell-<version>.zip for a GitHub release: needs a clean tree and a real certificate; NOTARY_PROFILE notarizes
@@ -169,7 +169,7 @@ A pearl-white scallop on pearl white, with Zephyr's breath from *The Birth of Ve
 
 The menu bar icon matches it: the scallop in lines (seven lobes, six ribs, ears) with the three wind strands across its left edge, a small gap cut around them so they read in front. It's an 18 pt template image drawn in code (`MenuBarIcon.swift`), so macOS tints it for light and dark menu bars and it stays sharp at 1x and 2x. AppKit's SVG renderer blurs masked gaps, which is why it isn't an SVG.
 
-Releases: version in `scripts/bundle.sh` (0.1.1), build number = commit count. The zip is signed with `codexjdub` and not notarized, so a downloaded copy is blocked on first launch ("“Seashell.app” Not Opened"); System Settings ▸ Privacy & Security ▸ Open Anyway lets it run (checked on macOS 27.0.1). Arm64 only.
+Releases: version in `scripts/bundle.sh` (0.1.1), build number = commit count. The zip is signed with `codexjdub` and not notarized, so a downloaded copy is blocked on first launch ("“Seashell.app” Not Opened"); System Settings ▸ Privacy & Security ▸ Open Anyway lets it run (checked on macOS 27.0.1). Universal: `bundle.sh` builds Apple silicon natively and Intel with `--triple x86_64-apple-macosx26.0`, then joins them with `lipo`; `release.sh` refuses anything else. So far it has only run on macOS 27 on Apple silicon.
 
 Build output lives in `~/Library/Caches/Seashell` (outside iCloud: iCloud tags bundles in Documents with metadata that breaks codesign). The installed app lives in `/Applications/Seashell.app`, where you'd look for it, a stable path for launch at login that iCloud won't sync (an admin account writes there without a password).
 
