@@ -138,4 +138,22 @@ struct StashLibraryTests {
         #expect(throws: ShelfError.defaultShelf) { try library.renameShelf(main, to: "Other") }
         #expect(throws: ShelfError.defaultShelf) { try library.deleteShelf(main) }
     }
+
+    @Test func shelfRenameMayChangeCaseOnly() throws {
+        _ = try folder.folder("Stash/Main")
+        let work = try library.createShelf(named: "work")
+        let renamed = try library.renameShelf(work, to: "Work")
+        #expect(renamed.name == "Work")
+        #expect(library.shelves().map(\.name) == ["Main", "Work"])
+    }
+
+    @Test func editingAnItemInPlaceChangesIt() throws {
+        let shelfURL = try folder.folder("Stash/Main")
+        let file = try folder.file("Stash/Main/note.txt", "first")
+        let shelf = Shelf(url: shelfURL)
+        let before = library.items(in: shelf)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -60)],
+                                              ofItemAtPath: file.path(percentEncoded: false))
+        #expect(library.items(in: shelf) != before, "so its tile redraws")
+    }
 }

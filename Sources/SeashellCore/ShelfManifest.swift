@@ -37,10 +37,20 @@ public struct ShelfManifest: Codable, Equatable, Sendable {
         }
     }
 
-    /// Read, change and write back under one coordinated write.
+    /// Read, change and write back under one coordinated write. Merging, so
+    /// iCloud hands over the current version before it's read. One that exists
+    /// but can't be read is left as it is: writing a fresh one would drop every
+    /// item's place and Put Back, on every Mac.
     static func update(in shelf: URL, _ change: (inout ShelfManifest) -> Void) throws {
-        try Coordinated.write(url(in: shelf), options: .forReplacing) { url in
-            var manifest = (try? JSONDecoder().decode(ShelfManifest.self, from: Data(contentsOf: url))) ?? ShelfManifest()
+        try Coordinated.write(url(in: shelf), options: .forMerging) { url in
+            var manifest = ShelfManifest()
+            if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
+                do {
+                    manifest = try JSONDecoder().decode(ShelfManifest.self, from: Data(contentsOf: url))
+                } catch {
+                    throw ShelfManifestError.unreadable(shelf.lastPathComponent)
+                }
+            }
             change(&manifest)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -64,5 +74,16 @@ public struct ShelfManifest: Codable, Equatable, Sendable {
     mutating func remove(_ name: String) {
         order.removeAll { $0 == name }
         origins[name] = nil
+    }
+}
+
+public enum ShelfManifestError: LocalizedError, Equatable {
+    case unreadable(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unreadable(let shelf):
+            "Seashell couldn’t read the list of items in “\(shelf)” (\(ShelfManifest.fileName)), so it left it untouched."
+        }
     }
 }

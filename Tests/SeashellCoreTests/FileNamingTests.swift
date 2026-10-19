@@ -17,7 +17,8 @@ struct FileNamingTests {
         #expect(FileNaming.uniqueDestination(for: "report.pdf", in: folder.root, isDirectory: false).lastPathComponent == "report 3.pdf")
     }
 
-    @Test func numberedNameCountsOnFromItsNumber() throws {
+    @Test func numberedCopyCountsOnFromItsNumber() throws {
+        try folder.file("report.pdf")
         try folder.file("report 2.pdf")
         #expect(FileNaming.uniqueDestination(for: "report 2.pdf", in: folder.root, isDirectory: false).lastPathComponent == "report 3.pdf")
     }
@@ -60,5 +61,26 @@ struct FileNamingTests {
         #expect(FileNaming.linkName(for: url, title: "Example: Domain") == "Example- Domain.webloc")
         #expect(FileNaming.linkName(for: url, title: nil) == "example.com.webloc")
         #expect(FileNaming.linkName(for: url, title: "   ") == "example.com.webloc")
+    }
+
+    @Test func nameEndingInANumberKeepsIt() throws {
+        try folder.file("Budget 2024.xlsx")
+        #expect(FileNaming.uniqueDestination(for: "Budget 2024.xlsx", in: folder.root, isDirectory: false).lastPathComponent
+                == "Budget 2024 2.xlsx")
+        try folder.file("IMG.jpg")
+        try folder.file("IMG 0001.jpg")
+        #expect(FileNaming.uniqueDestination(for: "IMG 0001.jpg", in: folder.root, isDirectory: false).lastPathComponent
+                == "IMG 0001 2.jpg", "a leading zero is part of the name, not a count")
+    }
+
+    @Test func numberedCopies() {
+        #expect(FileNaming.isNumberedCopy("report 2.pdf", of: "report.pdf"))
+        #expect(FileNaming.isNumberedCopy("Report 12.PDF", of: "report.pdf"))
+        #expect(FileNaming.isNumberedCopy("Makefile 3", of: "Makefile"))
+        #expect(!FileNaming.isNumberedCopy("report.pdf", of: "report.pdf"))
+        #expect(!FileNaming.isNumberedCopy("report 1.pdf", of: "report.pdf"))
+        #expect(!FileNaming.isNumberedCopy("report 02.pdf", of: "report.pdf"))
+        #expect(!FileNaming.isNumberedCopy("report 2a.pdf", of: "report.pdf"))
+        #expect(!FileNaming.isNumberedCopy("reports 2.pdf", of: "report.pdf"))
     }
 }

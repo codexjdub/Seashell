@@ -45,4 +45,12 @@ struct ShelfManifestTests {
         manifest.remove("a")
         #expect(manifest == ShelfManifest())
     }
+
+    @Test func updateLeavesAnUnreadableManifestAlone() throws {
+        let manifest = try folder.file(ShelfManifest.fileName, "{ not json")
+        #expect(throws: ShelfManifestError.unreadable(folder.root.lastPathComponent)) {
+            try ShelfManifest.update(in: folder.root) { $0.add("c.txt", origin: nil) }
+        }
+        #expect(try text(manifest) == "{ not json", "not replaced with an empty list")
+    }
 }

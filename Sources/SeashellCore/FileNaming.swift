@@ -2,8 +2,9 @@ import Foundation
 
 public enum FileNaming {
     /// A free spot for `name` in `folder`, Finder-style: `report.pdf`, then
-    /// `report 2.pdf`, `report 3.pdf`… A name that already ends in a number
-    /// counts on from it (`report 2.pdf` → `report 3.pdf`, not `report 2 2.pdf`).
+    /// `report 2.pdf`, `report 3.pdf`… A numbered copy counts on from its number
+    /// (`report 2.pdf` → `report 3.pdf`) when the original is there too; a name
+    /// that merely ends in a number keeps it (`Budget 2024.xlsx` → `Budget 2024 2.xlsx`).
     public static func uniqueDestination(for name: String, in folder: URL, isDirectory: Bool) -> URL {
         let hint: URL.DirectoryHint = isDirectory ? .isDirectory : .notDirectory
         let first = folder.appending(path: name, directoryHint: hint)
@@ -12,10 +13,13 @@ public enum FileNaming {
         let ext = isDirectory ? "" : (name as NSString).pathExtension
         var base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
         var number = 2
-        if let range = base.range(of: #" \d+$"#, options: .regularExpression),
+        if let range = base.range(of: #" [1-9]\d*$"#, options: .regularExpression),
            let existing = Int(base[range].dropFirst()) {
-            number = existing + 1
-            base.removeSubrange(range)
+            let original = String(base[..<range.lowerBound])
+            if exists(folder.appending(path: ext.isEmpty ? original : "\(original).\(ext)", directoryHint: hint)) {
+                number = existing + 1
+                base = original
+            }
         }
         while true {
             let candidate = folder.appending(path: ext.isEmpty ? "\(base) \(number)" : "\(base) \(number).\(ext)",
@@ -23,6 +27,18 @@ public enum FileNaming {
             if !exists(candidate) { return candidate }
             number += 1
         }
+    }
+
+    /// Whether `name` is a numbered copy of `original`, as `uniqueDestination`
+    /// names them: `report 2.pdf` for `report.pdf`. Case doesn't matter.
+    public static func isNumberedCopy(_ name: String, of original: String) -> Bool {
+        let ext = (original as NSString).pathExtension
+        let base = (ext.isEmpty ? original : (original as NSString).deletingPathExtension).lowercased()
+        let suffix = ext.isEmpty ? "" : ".\(ext.lowercased())"
+        let name = name.lowercased()
+        guard name.hasPrefix(base + " "), name.hasSuffix(suffix), name.count > base.count + 1 + suffix.count else { return false }
+        let number = name.dropFirst(base.count + 1).dropLast(suffix.count)
+        return number.first != "0" && number.allSatisfy { $0.isASCII && $0.isNumber } && (Int(number) ?? 0) >= 2
     }
 
     /// File name for stashed text: its first few words (at most 6 words and 40

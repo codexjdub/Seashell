@@ -97,6 +97,12 @@ public struct NotesLibrary: Sendable {
         let name = NoteNaming.title(for: text) + ".md"
         let current = note.url.lastPathComponent
         guard name != current else { return note }
+        // Already a numbered copy ("Groceries 2.md") because another note has the
+        // plain name: it stays put, or every visit would rename it again.
+        if FileNaming.isNumberedCopy(current, of: name),
+           FileManager.default.fileExists(atPath: folder.appending(path: name).path(percentEncoded: false)) {
+            return note
+        }
         // A change of case only: the unique-name check would see the note itself.
         let destination = name.lowercased() == current.lowercased()
             ? folder.appending(path: name)

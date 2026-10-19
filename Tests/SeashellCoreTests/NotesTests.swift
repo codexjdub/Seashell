@@ -105,4 +105,20 @@ struct NotesLibraryTests {
         #expect(library.notes().isEmpty)
         #expect(folder.names(in: folder.root.appending(path: "Trash")) == ["Groceries.md"])
     }
+
+    @Test func noteSharingATitleKeepsItsNumberedName() throws {
+        _ = try library.create(text: "Groceries\nmilk")
+        var second = try library.create(text: "Groceries\neggs")
+        #expect(second.title == "Groceries 2")
+        for _ in 0..<3 { second = try library.renameToFirstLine(second, text: "Groceries\neggs") }
+        #expect(second.title == "Groceries 2", "leaving it again and again doesn't rename it")
+        #expect(library.notes().map(\.title).sorted() == ["Groceries", "Groceries 2"])
+    }
+
+    @Test func numberedNoteTakesThePlainNameOnceFree() throws {
+        let first = try library.create(text: "Groceries\nmilk")
+        let second = try library.create(text: "Groceries\neggs")
+        try library.delete(first)
+        #expect(try library.renameToFirstLine(second, text: "Groceries\neggs").title == "Groceries")
+    }
 }

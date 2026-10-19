@@ -22,6 +22,10 @@ public struct StashItem: Identifiable, Hashable, Sendable {
     public let kind: Kind
     /// Folder it came from, if Put Back is possible.
     public let origin: String?
+    /// Part of the item's identity for redrawing: editing the file in place or
+    /// iCloud finishing a download changes the item, so its tile refreshes.
+    public let modified: Date?
+    public let cloud: CloudState
     public var id: URL { url }
     public var name: String { url.lastPathComponent }
     public var isFolder: Bool { kind == .folder }
@@ -102,7 +106,7 @@ public struct StashLibrary: Sendable {
     /// first, newest first; then the manifest's order.
     public func items(in shelf: Shelf) -> [StashItem] {
         let manifest = ShelfManifest.read(in: shelf.url)
-        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .addedToDirectoryDateKey]
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .addedToDirectoryDateKey, .contentModificationDateKey]
         let urls = contents(of: shelf.url, keys: keys)
         let byName = Dictionary(urls.map { ($0.lastPathComponent, $0) }, uniquingKeysWith: { first, _ in first })
         let listed = manifest.order.compactMap { byName[$0] }
@@ -114,7 +118,9 @@ public struct StashLibrary: Sendable {
             let values = try? url.resourceValues(forKeys: keys)
             return StashItem(url: url,
                              kind: StashItem.kind(of: url, isDirectory: values?.isDirectory == true, isPackage: values?.isPackage == true),
-                             origin: manifest.origins[url.lastPathComponent])
+                             origin: manifest.origins[url.lastPathComponent],
+                             modified: values?.contentModificationDate,
+                             cloud: CloudStatus.state(of: url))
         }
     }
 
@@ -159,7 +165,7 @@ public struct StashLibrary: Sendable {
     @discardableResult
     public func renameShelf(_ shelf: Shelf, to name: String) throws -> Shelf {
         guard !shelf.isDefault else { throw ShelfError.defaultShelf }
-        let url = try freeShelfURL(for: name)
+        let url = try freeShelfURL(for: name, renaming: shelf)
         let order = shelfOrder().map { $0 == shelf.name ? url.lastPathComponent : $0 }
         try Coordinated.move(shelf.url, to: url)
         Log.info("Renamed shelf \(shelf.name) → \(url.lastPathComponent)")
@@ -175,11 +181,15 @@ public struct StashLibrary: Sendable {
         try? saveShelfOrder(order)
     }
 
-    private func freeShelfURL(for name: String) throws -> URL {
+    /// `renaming`: a change of case only finds that shelf itself, which is fine.
+    private func freeShelfURL(for name: String, renaming shelf: Shelf? = nil) throws -> URL {
         let cleaned = FileNaming.sanitized(name)
         guard !cleaned.isEmpty, cleaned == name.trimmingCharacters(in: .whitespaces) else { throw ShelfError.invalidName(name) }
         let url = stash.appending(path: cleaned, directoryHint: .isDirectory)
-        guard !FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { throw ShelfError.nameTaken(cleaned) }
+        let isItself = shelf?.name.lowercased() == cleaned.lowercased()
+        guard isItself || !FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
+            throw ShelfError.nameTaken(cleaned)
+        }
         return url
     }
 

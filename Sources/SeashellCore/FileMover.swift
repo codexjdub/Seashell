@@ -51,6 +51,12 @@ public struct FileMover: Sendable {
     @discardableResult
     public func stash(_ source: URL, into shelf: URL, rememberOrigin: Bool = true) throws -> URL {
         guard exists(source) else { throw FileMoverError.missing(source.lastPathComponent) }
+        // Dragged back in from Finder, say: it's already there.
+        if source.deletingLastPathComponent().resolvingSymlinksInPath().pathComponents
+            == shelf.resolvingSymlinksInPath().pathComponents {
+            Log.info("\(source.lastPathComponent) is already in \(shelf.lastPathComponent)")
+            return source
+        }
         let destination = FileNaming.uniqueDestination(for: source.lastPathComponent, in: shelf, isDirectory: isDirectory(source))
         try transfer(source, to: destination)
         let origin = rememberOrigin ? source.deletingLastPathComponent().path(percentEncoded: false) : nil

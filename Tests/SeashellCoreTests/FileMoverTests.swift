@@ -206,4 +206,14 @@ struct FileMoverTests {
         #expect(CGImageDestinationFinalize(destination))
         return data as Data
     }
+
+    @Test func stashingAFileAlreadyInTheShelfLeavesIt() throws {
+        let original = try folder.file("Downloads/report.pdf", "PDF")
+        let mover = try folder.mover()
+        let stashed = try mover.stash(original, into: shelf)
+        let again = try mover.stash(stashed, into: shelf)
+        #expect(again == stashed)
+        #expect(folder.names(in: shelf).filter { !$0.hasPrefix(".") } == ["report.pdf"])
+        #expect(ShelfManifest.read(in: shelf).origins["report.pdf"] == source.path(percentEncoded: false), "keeps its real origin")
+    }
 }
