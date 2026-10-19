@@ -4,15 +4,17 @@ A macOS drag-and-drop shelf. Personal tool, public on GitHub, distributed outsid
 
 ## Layout
 
-A pull-down panel slides from the top of the screen (Unclutter-style). It has three areas:
+A pull-down panel slides from the top of the screen (Unclutter-style). It has two areas:
 
 ```
-┌──────────────────────── Pull-down panel ────────────────────────┐
-│  STASH                    │  CLIPBOARD             │  NOTES       │
-│  [Main] [Work] [+]        │  ┌─ Copy ─┐ ┌─ Cut ─┐  │  note list   │
-│  files & text, synced     │  └────────┘ └───────┘  │  + editor    │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────── Pull-down panel ───────────────┐
+│  STASH                        │  NOTES        │
+│  [Main] [Work] [+]            │  note list    │
+│  files & text, synced         │  + editor     │
+└───────────────────────────────────────────────┘
 ```
+
+A third area, the Clipboard (Copy and Cut), is designed but on hold; see the end.
 
 - Centered below the menu bar, on the display the pointer is on; slides out from under the menu bar. 1000 × 320 pt at Small text by default, scaled with the text size.
 - Resizable: drag the bottom edge for height, either side edge for width (it stays centered); remembered per display, measured at Small so it still scales with text. Minimum 640 × 220 at Small. Drag the gap between the cards to change the Stash / Notes split (30–75%), remembered.
@@ -27,7 +29,7 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 - Shelf tabs wrap onto more rows when they don't fit, with + always last; the first row lines up with Notes' header.
 - Shelf tabs: Main first, then the order you drag them into (drag a tab onto another; a line shows where it lands). New shelves go at the end; ones made in Finder or on another Mac come after the saved order, by name. The order lives in `Stash/.seashell.json`, so every Mac sees it. A click still selects a tab; control-click or right-click opens Rename… / Delete….
 - The Stash tabs and the Notes header share one height, so tabs, +, Notes and the pencil sit on one center line.
-- Stash (55%) and Notes each sit on their own rounded, lightly tinted card with a small gap. The Notes card and Stash's note cards share one faint yellow wash, and the selected note is a little stronger. Dark Mode: 6% (border 22%, selected 16%). Light Mode needs a little more to show: 10% (border 30%, selected 22%). The Clipboard becomes a third card with Milestone 4 (on hold).
+- Stash (55%) and Notes each sit on their own rounded, lightly tinted card with a small gap. The Notes card and Stash's note cards share one faint yellow wash, and the selected note is a little stronger. Dark Mode: 6% (border 22%, selected 16%). Light Mode needs a little more to show: 10% (border 30%, selected 22%).
 - Notes: a list (most recently edited first) beside a plain-text editor; Markdown is kept exactly as typed. The first line is the title, and the file is renamed to match when you leave the note (switch notes, close the panel, quit). Saves 1 s after you stop typing. ⌘N or the pencil adds a selected "New Note" row with the cursor in the editor; it gets a file once you type, and left empty it just disappears. An existing note left empty goes to the Trash. Rows show live titles as you type. Drag a note out as its text (plus a `.md` for Finder); drop text onto the list to start a note.
 - If a note changed on disk since Seashell read it (another Mac, another app), saving writes `Title (edited here).md` instead of overwriting. With no pending edits, the editor just shows the new version.
 - Text size: Small (the original), Medium (default, +15%), Large (+30%), Extra Large (+50%). Set in Settings or with ⌘+ / ⌘− / ⌘0 in the panel; remembered on this Mac. It scales all of Seashell's text, and tiles, cards, rows, the floating shelf and the panel grow with it (as far as the screen allows). macOS's own menus and alerts follow the system.
@@ -43,7 +45,7 @@ A pull-down panel slides from the top of the screen (Unclutter-style). It has th
 - Edit shortcuts (⌘X ⌘C ⌘V ⌘A ⌘Z ⇧⌘Z) are wired up by hand: a menu bar app has no Edit menu. In the editor they use the system clipboard as usual.
 - Dropping onto the menu bar icon stashes into `Main`.
 
-Shaking the cursor during a drag pops a **floating shelf** near the cursor with one drop zone per shelf, in the panel's tab order (Main first), so you drop straight into the shelf you want. 5 shelves show at a time; past that, holding the drag over **More…** for 0.4 s shows the next 5 in the same spot (the shelf keeps its size, so More… stays under the pointer), and on the last page it reads **Back to Main…** and starts over. Move off More… and back to flip again. Copy and Cut zones would join it with the Clipboard (on hold). It hides about a second after the mouse is released, whether or not you dropped on it, and never deletes anything. It wears the app icon on its right edge too, a fifth of the way down (just a picture: it can't be clicked mid-drag).
+Shaking the cursor during a drag pops a **floating shelf** near the cursor with one drop zone per shelf, in the panel's tab order (Main first), so you drop straight into the shelf you want. 5 shelves show at a time; past that, holding the drag over **More…** for 0.4 s shows the next 5 in the same spot (the shelf keeps its size, so More… stays under the pointer), and on the last page it reads **Back to Main…** and starts over. Move off More… and back to flip again. It hides about a second after the mouse is released, whether or not you dropped on it, and never deletes anything. It wears the app icon on its right edge too, a fifth of the way down (just a picture: it can't be clicked mid-drag).
 
 **Grab shelf**: shake the pointer with ⌥ held and no button down, and a shelf pops up above the pointer with the 8 most recently added items from every shelf, newest first, as the same tiles as the panel, four to a row; it's sized to show all of them at once and never scrolls or bounces. The app icon sits on its right edge like the panel's seal, a fifth of the way down; clicking it opens Settings. Drag one out and a copy lands where you drop it (the item stays in Stash), and that app comes forward. It goes away after a drop, a click elsewhere, a second ⌥-shake, or when the pointer moves more than 220 pt away (not in the first second, so the end of the shake doesn't count); More… opens the full panel. ⌥ keeps it from firing when you shake the pointer just to find it (macOS enlarges the pointer on a plain shake, and still does with ⌥). It follows the shake sensitivity in Settings; Off turns it off too. Seashell listens for ⌥ and follows the pointer only while ⌥ alone is held, so ordinary mouse movement never wakes it.
 
@@ -51,22 +53,22 @@ Shaking the cursor during a drag pops a **floating shelf** near the cursor with 
 
 ## Behaviour
 
-| | **Stash** | **Copy** (⌘C) | **Cut** (⌘X) |
-|---|---|---|---|
-| Drop a file or folder in | **Moves** into the shelf folder | Reference only; nothing copied | Reference only; nothing moved |
-| Drop text in | Saved as `.txt` | Held as text | Held as text |
-| Drop a link / image data | Saved as `.webloc` / `.png` | Held as a local copy (acts as Copy) | Held as a local copy (acts as Copy) |
-| Drop a promised file (Photos, Mail, Safari images) | Written into the shelf folder | Written to a local copy (acts as Copy) | Written to a local copy (acts as Copy) |
-| Drag out | Pastes a copy; item stays | Copies the original (as it is *now*); item stays | **Moves** the original; item leaves |
-| Right-click → Delete | File goes to the Trash | Item forgotten; your file untouched | Item forgotten; your file untouched |
-| Right-click → Put Back | File returns to the folder it came from | — | — |
-| Synced via iCloud | Yes | No (this Mac only) | No (this Mac only) |
-| Original deleted / unreachable | n/a — Stash owns the file | Item shows "missing" | Item shows "missing" |
+| | **Stash** |
+|---|---|
+| Drop a file or folder in | **Moves** into the shelf folder |
+| Drop text in | Saved as `.txt` |
+| Drop a link / image data | Saved as `.webloc` / `.png` |
+| Drop a promised file (Photos, Mail, pictures from web pages) | Written into the shelf folder |
+| Drag out | Pastes a copy; item stays |
+| Drag onto another shelf's tab | File moves to that shelf's folder, keeping its Put Back origin |
+| Right-click → Move to Trash | File goes to the Trash |
+| Right-click → Put Back | File returns to the folder it came from |
+| Synced via iCloud | Yes |
 
 Rules:
 
 - No modifier keys change behaviour. The drop zone decides.
-- To take a file out of Stash for good: drag it out (a copy lands), then right-click → Delete.
+- To take a file out of Stash for good: Put Back, or drag it out (a copy lands) and then Move to Trash.
 - Copy, Paste and Rename… are in an item's right-click menu, in the panel and tear-off shelves; ⌘C and ⌘V work too. Copy puts a file on the clipboard as the file, a text snippet as its text and a link as its address. Paste stashes what the clipboard holds like a drop, except files are copied in and the originals stay. Rename keeps the item's place and Put Back origin. No Share: macOS only shows its share sheet for the active app, and clicking Seashell's panels never makes it active; Show in Finder → Share covers it.
 - Tips: a welcome window on first launch shows the gestures (pull down, shake while dragging, ⌥-shake, the keyboard shortcut, tearing off a shelf, dropping on the menu bar icon, and saving screenshots to Stash through the Screenshot app's Other Location, which needs no code or watcher); "Tips…" in the menu bar menu shows it again.
 - A promised file (Photos, Mail, pictures from web pages) goes into the shelf only once it has content that has stopped growing for half a second. Chrome and other Chromium browsers use an older promise that reports the file before writing it. If it's still empty after 15 s, Seashell downloads the picture from the web address the drag carried (if that's really a picture), or else saves the picture data the drag carried as a PNG; failing both, it says so. An empty file is never stashed.
@@ -78,20 +80,7 @@ Rules:
 - Name clash in Stash: the newcomer becomes `report 2.pdf`, like Finder.
 - Folders are treated like files.
 - Several items dropped at once become separate items. Select several in a shelf to drag them out together.
-- **Cut only moves into Finder / a folder.** Dropped on any other app (Mail, Slack, browser) it acts like Copy and the item stays.
-- Cut never deletes the original itself; Finder performs the move (see Drag out). The item is removed only once the original is confirmed gone from its old location.
-- Text in Cut is a one-time paste: the source app decides whether text leaves it (most keep it).
-- Copy items show a link badge to distinguish them from Stash items. The Clipboard area has a Clear button.
-- Seashell never touches the system clipboard and never permanently deletes a file; removals go to the Trash.
-
-### Dragging between areas
-
-| From → to | Result |
-|---|---|
-| Stash shelf → another Stash shelf | File moves to that shelf's folder |
-| Cut → Stash | Original moves into Stash; Cut item leaves |
-| Copy → Stash | A copy goes into Stash; original and Copy item stay |
-| Stash → Copy or Cut | Not allowed |
+- Seashell touches the system clipboard only when you Copy or Paste, and never permanently deletes a file; removals go to the Trash.
 
 ## Storage
 
@@ -107,14 +96,12 @@ Rules:
 └── Notes/
     └── Groceries.md                  ← one Markdown file per note
 
-~/Library/Application Support/Seashell/   ← this Mac only
-├── clipboard.json                    ← Copy/Cut items: security bookmarks + text
-└── Held/                             ← local copies of promised files, links and image data in Copy/Cut
+~/Library/Application Support/Seashell/   ← this Mac only; created at launch, empty until the Clipboard
 
-Per-Mac preferences live in UserDefaults: the panel's pin, sizes and split, and every choice in Settings except launch at login, which macOS keeps.
-
-~/Library/Logs/Seashell/Seashell.log      ← readable log for testing
+~/Library/Logs/Seashell/Seashell.log      ← readable log; past 1 MB, launching keeps its newest half
 ```
+
+Per-Mac preferences live in UserDefaults: the panel's pin, sizes and split, open tear-off shelves, and every choice in Settings except launch at login, which macOS keeps.
 
 The folder on disk is the source of truth for Stash and Notes. Seashell watches it so changes from other Macs (via iCloud) or from Finder show up live.
 
@@ -124,33 +111,48 @@ If two Macs edit the same note at once, iCloud keeps both as separate files (`Gr
 
 ## Architecture
 
-Swift Package Manager, no Xcode required. AppKit for windows, events, drag sessions and the item grids (`NSCollectionView`: multi-select, drag operations and context menus need AppKit's control); SwiftUI where that control isn't needed, e.g. Notes. Tests use Swift Testing (XCTest is not in the Command Line Tools).
+Swift Package Manager, no Xcode required. AppKit throughout, Notes included: windows, events, drag sessions and the item grids (`NSCollectionView`: multi-select, drag operations and context menus). Tests use Swift Testing (XCTest is not in the Command Line Tools).
 
 ```
 Package.swift
 Sources/
-  SeashellCore/         ← no UI, unit-tested
-    SeashellFolders     paths; creates missing folders
-    Log                 os.Logger + ~/Library/Logs/Seashell/Seashell.log
-    StashStore          folder-backed shelves; NSFileCoordinator writes; folder watcher
-    NotesStore          Markdown files in Notes/
-    ClipboardStore      Copy/Cut items as bookmarks, persisted to clipboard.json
-    FileMover           move-into-Stash (same volume rename; cross-volume copy/verify/delete); name clashes
-    ItemStatus          missing / evicted / downloading
-  Seashell/             ← the app
-    AppDelegate         menu bar item (LSUIElement, no Dock icon); single instance
-    PanelController     non-activating NSPanel, top-edge slide-down
-    EdgeTrigger         global scroll monitor at the top screen edge
-    ShakeDetector       global drag monitor + drag pasteboard → shake detection
-    FloatingShelf       drop panel near the cursor: one zone per shelf, 5 per page, More… flips pages
-    DragOut             NSDraggingSource per area (operation masks below)
-    SettingsWindow      theme, text size, launch at login (SMAppService), large-file limit, shake sensitivity, pull down
-    Views/              SwiftUI: StashView, ClipboardView, NotesView
+  SeashellCore/           ← no UI, unit-tested
+    SeashellFolders       where things live; creates missing folders
+    StashLibrary          shelves and items on disk; shelf order
+    StashStore            the live view of Stash for the UI
+    ShelfManifest         a shelf's .seashell.json: item order, Put Back origins
+    FileMover             in (same-volume rename; cross-volume copy/verify/delete), between shelves, back out, to the Trash; rename
+    FileNaming            names for text, links and pictures; Finder-style name clashes
+    Notes, NotesStore     Markdown notes and their live list
+    FolderWatcher         FSEvents on the Seashell folder
+    Coordinated           NSFileCoordinator wrappers, so iCloud sees orderly writes
+    PromisedFile          waits for a promised file to be written
+    ItemContent           a text or link item's content, for dragging it out
+    CloudStatus           iCloud state: local, downloaded, cloud only, downloading
+    ShakeDetector         recognises a shake; fed by the drag and ⌥ watchers
+    EdgeScrollDetector    recognises a pull down or push up at the top edge
+    PanelGeometry, TextSize, SettingChoices, ImageConversion, FileSize, Log
+  Seashell/               ← the app
+    AppDelegate           wires it all up; single instance
+    MenuBarController     the menu bar icon's menu and drop target (MenuBarIcon draws it)
+    PanelController       the pull-down panel: non-activating NSPanel, slide, pin, resize
+    StashPanelController  shelf tabs and the item grid (StashGridView)
+    NotesPanelController  the note list and editor
+    FloatingShelf         the drop shelf for a shake during a drag
+    GrabShelf             the ⌥-shake shelf of recent items, and its OptionShakeWatcher
+    TearOffShelf          a shelf in its own window
+    DragWatcher           global drag monitor: shakes and holds at the top edge
+    EdgeScrollWatcher     global scroll monitor, on only while pull down is on or the panel is open
+    StashDropper          drops and pastes into a shelf
+    DragOut, ItemActions  dragging items out; copy and rename
+    HotKey                the global keyboard shortcut (Carbon hot key)
+    SettingsWindow, AppSettings, TextSizeSetting, TipsWindow, PreviewWindow, Alerts, Seal, FlowView, DragHandle
 Tests/SeashellCoreTests
-Resources/AppIcon.svg   the app icon's source drawing
-Resources/AppIcon.icns  built from it by scripts/make-icon.sh (svg2png.swift + iconutil)
-scripts/bundle.sh       swift build → Seashell.app (Info.plist, icon) → codesign "codexjdub"
-scripts/run.sh          quit running copy → bundle → install to /Applications → open
+Resources/AppIcon.svg     the app icon's source drawing
+Resources/AppIcon.icns    built from it by scripts/make-icon.sh (svg2png.swift + iconutil)
+scripts/bundle.sh         swift build → Seashell.app (Info.plist, icon) → codesign: SIGN_IDENTITY, else codexjdub if it's in the keychain, else ad hoc
+scripts/run.sh            quit the running copy → bundle → install to /Applications → open
+scripts/test.sh           the unit tests
 ```
 
 ### App icon
@@ -163,12 +165,7 @@ Build output lives in `~/Library/Caches/Seashell` (outside iCloud: iCloud tags b
 
 ### Drag out
 
-Each area offers a different operation mask, and Finder performs the file operation:
-
-- **Stash / Copy** — file URL with mask `.copy`.
-- **Cut** — file URL with mask `.move`. In `draggingSession(_:endedAt:operation:)`, if the operation was `.move` **and** the original no longer exists at its old path, remove the item. Otherwise keep it.
-
-This keeps Seashell out of the delete business for Cut. Proven on the same volume (spike, 2026-10-17): Finder moves the file about 1 s *after* the drag session ends, so check the original's path a few times over ~3 s. Other apps answer `generic` and leave the original. On a read-only drive Finder answered `move` but the copy failed and the original stayed, so the operation alone is never proof. A move onto a writable external drive is still unproven.
+Stash items go out as a file URL with the operation mask `.copy`: Finder and other apps copy, and the item stays. Text and links go out as their content too (see Rules).
 
 ### Drag in
 
@@ -193,5 +190,29 @@ Measured 2026-10-18: 2.6 MB on disk; 17 MB of memory at launch, 47 MB once the p
 
 ### Permissions
 
-- Documents folder access: no prompt appeared in the spike (macOS 27.0.1, not sandboxed). Keep `NSDocumentsFolderUsageDescription` and sign every build with `codexjdub` in case a later macOS asks.
+- Documents folder access: no prompt appeared in the spike (macOS 27.0.1, not sandboxed). Keep `NSDocumentsFolderUsageDescription` and sign every build with the same certificate (`codexjdub` for the maintainer's) in case a later macOS asks.
 - Global mouse/scroll monitors work without Accessibility (spike), and so does a modifier-key (`flagsChanged`) monitor (tested 2026-10-18).
+
+## On hold: Clipboard (Copy / Cut)
+
+Designed, not built: on hold since 2026-10-17. A third card between Stash and Notes would hold references to your files instead of moving them in, and the floating shelf would gain Copy and Cut zones next to the shelves.
+
+| | **Copy** | **Cut** |
+|---|---|---|
+| Drop a file or folder in | Reference only; nothing copied | Reference only; nothing moved |
+| Drop text in | Held as text | Held as text |
+| Drop a link / image data | Held as a local copy (acts as Copy) | Held as a local copy (acts as Copy) |
+| Drop a promised file | Written to a local copy (acts as Copy) | Written to a local copy (acts as Copy) |
+| Drag out | Copies the original (as it is *now*); item stays | **Moves** the original; item leaves |
+| Right-click → Delete | Item forgotten; your file untouched | Item forgotten; your file untouched |
+| Synced via iCloud | No (this Mac only) | No (this Mac only) |
+| Original deleted / unreachable | Item shows "missing" | Item shows "missing" |
+
+- **Cut only moves into Finder / a folder.** Dropped on any other app (Mail, Slack, browser) it acts like Copy and the item stays.
+- Cut never deletes the original itself; Finder performs the move. The item is removed only once the original is confirmed gone from its old location.
+- Text in Cut is a one-time paste: the source app decides whether text leaves it (most keep it).
+- Copy items show a link badge to tell them from Stash items. The Clipboard area has a Clear button.
+- Between areas: Cut → Stash moves the original into Stash and the Cut item leaves; Copy → Stash copies it in and both stay; Stash → Copy or Cut isn't allowed.
+- Storage, this Mac only: `~/Library/Application Support/Seashell/clipboard.json` (security bookmarks + text) and `Held/` (local copies of promised files, links and image data).
+
+Cut drags out a file URL with the mask `.move`. In `draggingSession(_:endedAt:operation:)`, if the operation was `.move` **and** the original no longer exists at its old path, the item is removed; otherwise it stays. This keeps Seashell out of the delete business. Proven on the same volume (spike, 2026-10-17): Finder moves the file about 1 s *after* the drag session ends, so check the original's path a few times over ~3 s. Other apps answer `generic` and leave the original. On a read-only drive Finder answered `move` but the copy failed and the original stayed, so the operation alone is never proof. A move onto a writable external drive is still unproven.
