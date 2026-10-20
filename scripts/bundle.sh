@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PRODUCT=Seashell
 BUNDLE_ID=io.github.codexjdub.seashell
-VERSION=0.1.3
+VERSION=0.1.4
 # The oldest macOS it runs on; Package.swift says the same. macOS 26 is the last
 # for Intel Macs.
 MINIMUM_MACOS=26.0
