@@ -45,6 +45,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create "$ARM_BIN" "$INTEL_BIN" -output "$APP/Contents/MacOS/$PRODUCT"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+cp "$ROOT/Resources/Seal.png" "$APP/Contents/Resources/Seal.png"
+cp -R "$ROOT/Resources/EasterEgg" "$APP/Contents/Resources/EasterEgg"
 
 # LSUIElement: a menu bar app, with no Dock icon. NSServices: "Stash in Seashell"
 # (files, folders or text, e.g. from Finder's right-click menu) and "New Seashell
