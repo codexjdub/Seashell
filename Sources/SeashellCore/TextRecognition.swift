@@ -18,26 +18,9 @@ public enum TextRecognitionError: LocalizedError, Equatable {
 
 /// Copy Text: the words in a picture or a PDF, read on this Mac. A PDF page
 /// with a text layer is read as it is; pictures, and pages that are only
-/// scans, go through Vision's text recognition (its first use on a Mac sets
-/// up the model, which can take half a minute; after that, a picture takes
-/// about a tenth of a second).
+/// scans, go through Vision's text recognition (about a tenth of a second a
+/// picture).
 public enum TextRecognition {
-    /// What Seashell is launched with to run `warmUp()` in a helper and quit.
-    public static let warmUpArgument = "--warm-up-text-recognition"
-
-    /// Sets up the model by reading a tiny blank picture. The set-up is kept
-    /// for this program, so a helper that does it and quits leaves the app
-    /// fast without holding the model in memory (about 70 ms once it's set up).
-    public static func warmUp() async {
-        guard let context = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0,
-                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
-        else { return }
-        context.setFillColor(gray: 1, alpha: 1)
-        context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
-        guard let blank = context.makeImage() else { return }
-        _ = try? await recognize(blank)
-    }
-
     /// Pictures and PDFs.
     public static func canRead(_ item: StashItem) -> Bool {
         guard item.kind == .file, let type = UTType(filenameExtension: item.url.pathExtension) else { return false }

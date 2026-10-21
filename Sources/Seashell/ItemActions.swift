@@ -26,10 +26,6 @@ enum ItemActions {
         Log.info("Copied \(items.count) item\(items.count == 1 ? "" : "s") to the clipboard")
     }
 
-    /// Set once Copy Text has been used on this Mac: from then on its model is
-    /// set up after each launch (see AppDelegate).
-    static let copyTextUsedKey = "copyTextUsed"
-
     /// Copy Text: the words in the pictures and PDFs among `items`, read on this
     /// Mac in the background, onto the clipboard (several with a blank line
     /// between). Says so if there's no text, or if an item is only in iCloud
@@ -37,7 +33,6 @@ enum ItemActions {
     static func copyText(_ items: [StashItem]) {
         let readable = items.filter(TextRecognition.canRead)
         guard !readable.isEmpty else { return }
-        UserDefaults.standard.set(true, forKey: copyTextUsedKey)
         let inICloud = readable.filter { $0.cloud == .cloudOnly }
         guard inICloud.isEmpty else {
             inICloud.forEach { try? CloudStatus.startDownloading($0.url) }
