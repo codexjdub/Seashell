@@ -11,9 +11,10 @@ import SeashellCore
 ///
 /// Esc goes to the window (the panel saves and closes) instead of the text
 /// view's usual "suggest completions".
-final class NoteTextView: NSTextView {
+final class NoteTextView: NSTextView, NSTextStorageDelegate {
     static func make() -> NoteTextView {
         let editor = NoteTextView()
+        editor.textStorage?.delegate = editor
         editor.isRichText = false
         editor.allowsUndo = true
         editor.textContainerInset = NSSize(width: 6, height: 8)
@@ -32,18 +33,21 @@ final class NoteTextView: NSTextView {
     }
 
     /// Done to-dos in grey with a line through their words. Only how they look:
-    /// the file stays plain text. Called after loading and after each change.
-    func styleChecklists() {
-        guard let storage = textStorage else { return }
-        let all = NSRange(location: 0, length: storage.length)
-        storage.beginEditing()
-        storage.removeAttribute(.strikethroughStyle, range: all)
-        storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: all)
-        for item in Checklist.items(in: storage.string) where item.isDone {
-            storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: item.line)
-            storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: item.words)
+    /// the file stays plain text. Each change (typing, pasting, undo, loading a
+    /// note) restyles just the lines it touched, once the text has taken it in:
+    /// restyling any earlier (in willProcessEditing) widens the edit to the whole
+    /// line, and the cursor jumps to the line's end after every key.
+    nonisolated func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
+                                 range editedRange: NSRange, changeInLength delta: Int) {
+        guard editedMask.contains(.editedCharacters) else { return }
+        let text = textStorage.string
+        let lines = (text as NSString).lineRange(for: editedRange)
+        textStorage.removeAttribute(.strikethroughStyle, range: lines)
+        textStorage.addAttribute(.foregroundColor, value: NSColor.textColor, range: lines)
+        for item in Checklist.items(in: text, range: lines) where item.isDone {
+            textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: item.line)
+            textStorage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: item.words)
         }
-        storage.endEditing()
     }
 
     // MARK: To-dos and lists
@@ -119,7 +123,7 @@ enum EditShortcuts {
     /// True if `event` was one of them and something took it.
     static func perform(_ event: NSEvent, from sender: Any) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
-        let key = event.charactersIgnoringModifiers?.lowercased()
+        let key = event.shortcutKey
         // Text size: ⌘+ (also ⌘= and ⇧⌘=), ⌘−, ⌘0.
         let setting = TextSizeSetting.shared
         switch (modifiers, key) {
@@ -147,5 +151,14 @@ enum EditShortcuts {
         }
         guard let action else { return false }
         return NSApp.sendAction(action, to: nil, from: sender)
+    }
+}
+
+extension NSEvent {
+    /// The key, lowercased, as it types with ⌘ held: what a shortcut is matched
+    /// against, as menus do. A layout's ⌘ keys can differ from its plain ones:
+    /// Russian types "с" on the C key, but "c" with ⌘.
+    var shortcutKey: String? {
+        (characters(byApplyingModifiers: .command) ?? charactersIgnoringModifiers)?.lowercased()
     }
 }

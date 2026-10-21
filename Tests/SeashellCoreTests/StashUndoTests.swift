@@ -91,8 +91,8 @@ struct StashUndoTests {
         second.record(.added(URL(filePath: "/b")))
         second.record(.added(URL(filePath: "/c")))
 
-        #expect(history.popLatest() == [.added(URL(filePath: "/b")), .added(URL(filePath: "/c"))])
-        #expect(history.popLatest() == [.added(URL(filePath: "/a"))])
+        #expect(history.popLatest()?.changes == [.added(URL(filePath: "/b")), .added(URL(filePath: "/c"))])
+        #expect(history.popLatest()?.changes == [.added(URL(filePath: "/a"))])
         #expect(history.popLatest() == nil)
     }
 
@@ -100,7 +100,38 @@ struct StashUndoTests {
         let history = StashUndoHistory()
         history.begin().record(.added(URL(filePath: "/a")))
         _ = history.begin()  // a drop that was declined
-        #expect(history.popLatest() == [.added(URL(filePath: "/a"))])
+        #expect(history.popLatest()?.changes == [.added(URL(filePath: "/a"))])
+    }
+
+    @MainActor @Test func aDropStillLandingIsTheOneTakenBack() async {
+        let history = StashUndoHistory()
+        history.begin().record(.added(URL(filePath: "/earlier.txt")))
+        let landing = history.begin()
+        landing.expect()  // a big copy, still going
+
+        let step = history.popLatest()
+        #expect(step === landing, "not the drop before it")
+        #expect(step?.isLanding == true)
+        Task {
+            landing.record(.added(URL(filePath: "/big.mov")))
+            landing.landed()
+        }
+        await step?.untilLanded()
+        #expect(step?.changes == [.added(URL(filePath: "/big.mov"))])
+        #expect(history.popLatest()?.changes == [.added(URL(filePath: "/earlier.txt"))], "still there for the next ⌘Z")
+    }
+
+    @MainActor @Test func aStepLandsOnceEveryPieceHas() async {
+        let step = StashUndoHistory().begin()
+        step.expect()
+        step.expect()
+        step.landed()
+        #expect(step.isLanding)
+        step.landed()
+        #expect(!step.isLanding)
+        step.landed()  // one too many does no harm
+        #expect(!step.isLanding)
+        await step.untilLanded()  // returns at once
     }
 
     @MainActor @Test func keepsOnlyTheLatestSteps() {

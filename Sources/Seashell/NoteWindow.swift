@@ -47,8 +47,10 @@ final class NoteWindows {
     }
 
     /// `note` is going to the Trash from the panel: its window saves and closes.
-    func closeForTrash(_ note: Note) {
-        windows[note.url.lastPathComponent]?.close(trashingIfEmpty: false)
+    /// False if its edits couldn't be saved: then it stays open with them, and
+    /// the note had better stay too.
+    func closeForTrash(_ note: Note) -> Bool {
+        windows[note.url.lastPathComponent]?.close(trashingIfEmpty: false) ?? true
     }
 
     /// The ones open when Seashell quit, where they were.
@@ -109,8 +111,8 @@ final class NoteWindows {
 /// Trash, as leaving it in the panel does.
 @MainActor
 final class NoteWindow: NSObject, NSWindowDelegate, NSTextViewDelegate {
-    private(set) var note: Note
-    var name: String { note.url.lastPathComponent }
+    /// The note's file name, which NoteWindows knows the window by.
+    private(set) var name: String
     var frame: NSRect { window.frame }
 
     /// The note was renamed (to its first line, or saved as a separate copy): its old file name.
@@ -123,18 +125,19 @@ final class NoteWindow: NSObject, NSWindowDelegate, NSTextViewDelegate {
     private static let titleBarHeight: CGFloat = 28
 
     private let store: NotesStore
-    private let editor = NoteTextView.make()
+    private let editor: NoteEditor
     private let title = NSTextField(labelWithString: "")
-    private var hasUnsavedEdits = false
-    private var saveTask: Task<Void, Never>?
     private var isClosing = false
     private lazy var window = makeWindow()
 
     init(note: Note, store: NotesStore) {
-        self.note = note
         self.store = store
+        editor = NoteEditor(store: store)
+        name = note.url.lastPathComponent
         super.init()
-        load(note)
+        editor.load(note)
+        title.stringValue = note.title
+        editor.onSave = { [weak self] _ in self?.noteChanged() }
         observeChanges { [weak self] in self?.followStore() }
         observeChanges { [weak self] in self?.applyTextSize() }
     }
@@ -165,7 +168,7 @@ final class NoteWindow: NSObject, NSWindowDelegate, NSTextViewDelegate {
     func bringForward() {
         window.orderFrontRegardless()
         window.makeKey()
-        window.makeFirstResponder(editor)
+        window.makeFirstResponder(editor.textView)
     }
 
     // MARK: Saving
@@ -173,40 +176,28 @@ final class NoteWindow: NSObject, NSWindowDelegate, NSTextViewDelegate {
     /// Writes pending edits. False if they couldn't be saved.
     @discardableResult
     func saveNow() -> Bool {
-        saveTask?.cancel()
-        saveTask = nil
-        guard hasUnsavedEdits else { return true }
-        do {
-            let result = try store.library.save(editor.string, to: note)
-            if case .savedAsCopy = result {
-                Log.info("Note window: \(note.title) changed elsewhere; this version saved as \(result.note.title)")
-            }
-            hasUnsavedEdits = false
-            setNote(result.note)
-            store.reload()
-            return true
-        } catch {
-            Alerts.showError("Couldn’t save the note", error)
-            return false
-        }
+        editor.saveNow()
     }
 
     /// Saved, and renamed to its first line: when you click away, and on quit.
     func tidy() {
-        guard saveNow(), !isEmpty else { return }
+        guard editor.saveNow(), !editor.isBlank else { return }
         do {
-            setNote(try store.library.renameToFirstLine(note, text: editor.string))
+            try editor.renameToFirstLine()
+            noteChanged()
         } catch {
-            Log.error("Couldn’t rename note \(note.title): \(error.localizedDescription)")
+            Log.error("Couldn’t rename note \(title.stringValue): \(error.localizedDescription)")
         }
         store.reload()
     }
 
     /// Saved and renamed, then closed; an emptied note goes to the Trash. If it
-    /// can't be saved, it stays open with its text.
-    func close(trashingIfEmpty: Bool = true) {
-        guard !isClosing, saveNow() else { return }
-        if trashingIfEmpty, isEmpty {
+    /// can't be saved, it stays open with its text, and this returns false.
+    @discardableResult
+    func close(trashingIfEmpty: Bool = true) -> Bool {
+        guard !isClosing else { return true }
+        guard editor.saveNow() else { return false }
+        if trashingIfEmpty, editor.isBlank, let note = editor.note {
             do {
                 try store.library.delete(note)
             } catch {
@@ -217,65 +208,51 @@ final class NoteWindow: NSObject, NSWindowDelegate, NSTextViewDelegate {
             tidy()
         }
         dismiss()
-    }
-
-    private var isEmpty: Bool {
-        editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return true
     }
 
     private func dismiss() {
         isClosing = true
-        saveTask?.cancel()
+        editor.discardEdits()
         window.orderOut(nil)
         onClose?()
     }
 
-    private func setNote(_ new: Note) {
-        let old = name
-        note = new
-        title.stringValue = new.title
-        if new.url.lastPathComponent != old { onRenamed?(old) }
-    }
-
-    private func load(_ note: Note) {
-        self.note = note
-        editor.string = (try? store.library.read(note)) ?? ""
-        editor.undoManager?.removeAllActions()
-        editor.styleChecklists()
-        hasUnsavedEdits = false
+    /// After a save, rename or reload: its title, and its name for NoteWindows
+    /// if the file is now another (renamed, or a separate copy).
+    private func noteChanged() {
+        guard let note = editor.note else { return }
         title.stringValue = note.title
+        let old = name
+        name = note.url.lastPathComponent
+        if name != old { onRenamed?(old) }
     }
 
     /// Another Mac's (or app's) edits show up when there are none waiting here.
-    /// Deleted or renamed elsewhere (which can't be told apart), the window closes.
+    /// Deleted or renamed elsewhere (which can't be told apart), the window
+    /// closes, unless edits are waiting: then it stays, and saving them brings
+    /// the file back.
     private func followStore() {
         let notes = store.notes  // read first: that's what keeps this running on changes
         guard !isClosing else { return }
-        guard let onDisk = notes.first(where: { $0.url.lastPathComponent == name }) else {
-            Log.info("Note window: \(note.title) was renamed or deleted elsewhere")
+        let shown = title.stringValue
+        switch editor.follow(notes) {
+        case .none:
+            break
+        case .changed:
+            Log.info("Note window: \(shown) changed elsewhere; showing the new version")
+            noteChanged()
+        case .gone:
+            Log.info("Note window: \(shown) was renamed or deleted elsewhere")
             dismiss()
-            return
-        }
-        if !hasUnsavedEdits, onDisk.modified.timeIntervalSince(note.modified) > 0.001 {
-            Log.info("Note window: \(note.title) changed elsewhere; showing the new version")
-            let selection = editor.selectedRange()
-            load(onDisk)
-            editor.setSelectedRange(NSRange(location: min(selection.location, (editor.string as NSString).length), length: 0))
         }
     }
 
     // MARK: Editor and window
 
     func textDidChange(_ notification: Notification) {
-        hasUnsavedEdits = true
-        editor.styleChecklists()
-        title.stringValue = isEmpty ? note.title : NoteNaming.title(for: editor.string)
-        saveTask?.cancel()
-        saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled else { return }
-            self?.saveNow()
-        }
+        editor.textChanged()
+        title.stringValue = editor.isBlank ? (editor.note?.title ?? title.stringValue) : NoteNaming.title(for: editor.text)
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -300,7 +277,7 @@ final class NoteWindow: NSObject, NSWindowDelegate, NSTextViewDelegate {
     private func applyTextSize() {
         _ = TextSizeSetting.shared.size
         title.font = UIScale.font(12, weight: .semibold)
-        editor.font = UIScale.font(13)
+        editor.textView.font = UIScale.font(13)
     }
 
     private func makeWindow() -> NSPanel {
@@ -321,9 +298,9 @@ final class NoteWindow: NSObject, NSWindowDelegate, NSTextViewDelegate {
         window.delegate = self
 
         let card = NoteCardView()
-        editor.delegate = self
+        editor.textView.delegate = self
         let scroll = NSScrollView()
-        scroll.documentView = editor
+        scroll.documentView = editor.textView
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -371,7 +348,7 @@ private final class NoteWindowPanel: NSPanel {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
-        if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "w" {
+        if modifiers == .command, event.shortcutKey == "w" {
             performClose(nil)
             return true
         }

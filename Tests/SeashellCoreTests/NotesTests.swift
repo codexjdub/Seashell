@@ -17,6 +17,13 @@ struct NoteNamingTests {
         #expect(NoteNaming.title(for: String(repeating: "x", count: 100)).count == NoteNaming.maxTitleLength)
     }
 
+    @Test func emojiTitlesFitAFileName() {
+        let family = "👨‍👩‍👧‍👦"  // one character, 11 UTF-16 units
+        let title = NoteNaming.title(for: String(repeating: family, count: 30))
+        #expect(title.utf16.count <= FileNaming.maxNameLength)
+        #expect(!title.isEmpty && title.allSatisfy { $0 == Character(family) }, "cut between emoji, not inside one")
+    }
+
     @Test func emptyIsUntitled() {
         #expect(NoteNaming.title(for: " \n\t") == "Untitled")
         #expect(NoteNaming.title(for: "###") == "Untitled")
@@ -165,5 +172,50 @@ struct NotesLibraryTests {
         #expect(throws: ShelfManifestError.unreadable("Notes")) { try library.setPinned(note, true) }
         #expect(try text(manifest) == "{ not json")
         #expect(library.notes().map(\.title) == ["Groceries"])
+    }
+
+    @MainActor @Test func pinsOfNotesGoneElsewhereAreForgottenAfterAWhile() async throws {
+        let note = try library.create(text: "Groceries\nmilk")
+        try library.setPinned(note, true)
+        try FileManager.default.removeItem(at: note.url)  // deleted in Finder
+
+        let store = NotesStore(library: library, pruneGrace: 0.3)
+        #expect(NotesManifest.read(in: notesFolder).pinned == ["Groceries.md"], "kept during the grace period")
+        for _ in 0..<30 where !NotesManifest.read(in: notesFolder).pinned.isEmpty {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(NotesManifest.read(in: notesFolder).pinned.isEmpty)
+        #expect(try library.create(text: "Groceries\neggs").isPinned == false, "a new note of that name isn't pinned")
+        withExtendedLifetime(store) {}
+    }
+
+    @MainActor @Test func aPinnedNoteBackWithinTheGraceKeepsItsPin() async throws {
+        let note = try library.create(text: "Groceries\nmilk")
+        try library.setPinned(note, true)
+        let away = folder.root.appending(path: "Groceries.md")
+        try FileManager.default.moveItem(at: note.url, to: away)
+
+        let store = NotesStore(library: library, pruneGrace: 0.5)
+        try FileManager.default.moveItem(at: away, to: note.url)  // e.g. iCloud catching up
+        try await Task.sleep(for: .milliseconds(900))
+        #expect(NotesManifest.read(in: notesFolder).pinned == ["Groceries.md"])
+        withExtendedLifetime(store) {}
+    }
+
+    // MARK: Long names
+
+    @Test func emojiTitlesStillSave() throws {
+        let family = try library.create(text: String(repeating: "👨‍👩‍👧‍👦", count: 30))
+        #expect(exists(family.url))
+        // A note of 60 flags, changed on another Mac: this version goes to its
+        // " (edited here)" copy, which must fit too.
+        let flags = try library.create(text: String(repeating: "🇺🇸", count: 60))
+        try Data("from the other Mac".utf8).write(to: flags.url)
+        try setModified(flags.url, flags.modified.addingTimeInterval(5))
+        guard case .savedAsCopy(let copy) = try library.save("from this Mac", to: flags) else {
+            Issue.record("expected a separate copy")
+            return
+        }
+        #expect(try library.read(copy) == "from this Mac")
     }
 }

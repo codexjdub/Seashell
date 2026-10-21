@@ -65,8 +65,12 @@ public struct ShelfManifest: Codable, Equatable, Sendable {
         origins[name] = origin
     }
 
-    /// Same place in the order, same origin, new name.
+    /// Same place in the order, same origin, new name. An entry already under
+    /// the new name (an item since deleted in Finder, say) goes, so the item
+    /// isn't listed twice or given that one's Put Back.
     mutating func rename(_ name: String, to newName: String) {
+        guard newName != name else { return }
+        remove(newName)
         if let index = order.firstIndex(of: name) { order[index] = newName }
         if let origin = origins.removeValue(forKey: name) { origins[newName] = origin }
     }

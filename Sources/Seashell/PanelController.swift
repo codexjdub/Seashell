@@ -602,7 +602,7 @@ final class SeashellPanel: NSPanel {
     /// ⌘N and ⌘,, plus the edit shortcuts every Seashell window gets (EditShortcuts).
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
-        let key = event.charactersIgnoringModifiers?.lowercased()
+        let key = event.shortcutKey
         if modifiers == .command, key == "n", let onNewNote {
             onNewNote()
             return true

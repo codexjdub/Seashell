@@ -83,4 +83,13 @@ struct FileNamingTests {
         #expect(!FileNaming.isNumberedCopy("report 2a.pdf", of: "report.pdf"))
         #expect(!FileNaming.isNumberedCopy("reports 2.pdf", of: "report.pdf"))
     }
+
+    @Test func emojiNamesFit() {
+        let link = FileNaming.linkName(for: URL(string: "https://example.com")!, title: String(repeating: "🇯🇵", count: 60))
+        #expect(link.utf16.count <= FileNaming.maxNameLength + ".webloc".utf16.count)
+        #expect(link.hasPrefix("🇯🇵") && link.hasSuffix("🇯🇵.webloc"))
+        let snippet = FileNaming.snippetName(for: String(repeating: "👨‍👩‍👧‍👦", count: 40), date: .now)
+        #expect(snippet.utf16.count <= FileNaming.maxNameLength + ".txt".utf16.count)
+        #expect(FileNaming.fitted("plain") == "plain")
+    }
 }

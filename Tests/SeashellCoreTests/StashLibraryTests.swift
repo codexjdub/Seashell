@@ -51,7 +51,7 @@ struct StashLibraryTests {
         #expect(ShelfManifest.read(in: stash).order == ["Zwei", "Three"])
     }
 
-    @Test func recentItemsComeFromEveryShelfNewestFirst() throws {
+    @MainActor @Test func recentItemsComeFromEveryShelfNewestFirst() throws {
         let mover = try folder.mover()
         let main = try folder.folder("Stash/Main")
         let work = try folder.folder("Stash/Work")
@@ -59,8 +59,17 @@ struct StashLibraryTests {
             _ = try mover.stash(text: text, into: shelf)
             Thread.sleep(forTimeInterval: 0.05)  // distinct "date added"
         }
-        #expect(library.recentItems(limit: 8).map(\.name) == ["newest.txt", "middle.txt", "oldest.txt"])
-        #expect(library.recentItems(limit: 2).map(\.name) == ["newest.txt", "middle.txt"])
+        let store = StashStore(library: library)
+        #expect(store.recentItems(limit: 8).map(\.name) == ["newest.txt", "middle.txt", "oldest.txt"])
+        #expect(store.recentItems(limit: 2).map(\.name) == ["newest.txt", "middle.txt"])
+    }
+
+    @Test func aNameListedTwiceShowsOnce() throws {
+        let main = Shelf(url: try folder.folder("Stash/Main"))
+        try folder.file("Stash/Main/a.txt")
+        try folder.file("Stash/Main/b.txt")
+        try folder.file("Stash/Main/\(ShelfManifest.fileName)", #"{"order": ["a.txt", "b.txt", "a.txt"]}"#)
+        #expect(library.items(in: main).map(\.name) == ["a.txt", "b.txt"])
     }
 
     @Test func mainCannotMove() throws {

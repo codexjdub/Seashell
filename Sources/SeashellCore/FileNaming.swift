@@ -51,6 +51,7 @@ public enum FileNaming {
             name = sanitized(words.joined(separator: " "))
         }
         if name.count > 40 { name = String(name.prefix(40)) }
+        name = fitted(name)
         return (name.isEmpty ? "Snippet \(stamp(date))" : name) + ".txt"
     }
 
@@ -58,7 +59,21 @@ public enum FileNaming {
     public static func linkName(for url: URL, title: String?) -> String {
         let candidates = [title, url.host(percentEncoded: false)].compactMap { $0.map(sanitized) }
         let name = candidates.first { !$0.isEmpty } ?? "Link"
-        return String(name.prefix(60)) + ".webloc"
+        return fitted(String(name.prefix(60))) + ".webloc"
+    }
+
+    /// The most UTF-16 units a name Seashell makes up may have. macOS allows
+    /// 255; this leaves room for " (edited here)", a number and the extension.
+    public static let maxNameLength = 200
+
+    /// `name`, shortened at a whole character if it's longer than
+    /// `maxNameLength`. An emoji can take up to 11 units, so a name that's
+    /// short in characters can still be too long.
+    public static func fitted(_ name: String) -> String {
+        guard name.utf16.count > maxNameLength else { return name }
+        var fitted = Substring(name)
+        while fitted.utf16.count > maxNameLength { fitted.removeLast() }
+        return fitted.trimmingCharacters(in: .whitespaces)
     }
 
     public static func imageName(date: Date) -> String {

@@ -229,7 +229,8 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let cell = collectionView.makeItem(withIdentifier: StashItemCell.identifier, for: indexPath)
-        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: thumbnails)
+        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: thumbnails,
+                                                scale: collectionView.window?.backingScaleFactor ?? 2)
         return cell
     }
 
@@ -479,18 +480,10 @@ final class TearOffWindow: NSPanel {
         onEscape?()
     }
 
-    /// No menu bar of its own: ⌘C, ⌘V and ⌘Z go to the grid by hand.
+    /// No menu bar of its own: ⌘C, ⌘V, ⌘A and ⌘Z go to the grid by hand, and
+    /// ⌘+ / ⌘− / ⌘0 set the text size, as in the panel (EditShortcuts).
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
-        let action: Selector? = switch (modifiers, event.charactersIgnoringModifiers?.lowercased()) {
-        case (.command, "c"): #selector(NSText.copy(_:))
-        case (.command, "v"): #selector(NSText.paste(_:))
-        case (.command, "a"): #selector(NSText.selectAll(_:))
-        case (.command, "z"): Selector(("undo:"))
-        default: nil
-        }
-        if let action, NSApp.sendAction(action, to: nil, from: self) { return true }
-        return super.performKeyEquivalent(with: event)
+        EditShortcuts.perform(event, from: self) || super.performKeyEquivalent(with: event)
     }
 }
 

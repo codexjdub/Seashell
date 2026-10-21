@@ -148,6 +148,20 @@ struct FileMoverTests {
         #expect(try mover.rename(a, to: "A.txt").lastPathComponent == "A.txt", "a change of case alone is fine")
     }
 
+    @Test func renameOntoANameStillListedKeepsOneEntry() throws {
+        let mover = try folder.mover()
+        let gone = try mover.stash(try folder.file("Downloads/a.txt", "A"), into: shelf)
+        try FileManager.default.removeItem(at: gone)  // deleted in Finder; its entry waits out the prune grace
+        let b = try mover.stash(text: "b", into: shelf)
+
+        try mover.rename(b, to: "a.txt")
+        let manifest = ShelfManifest.read(in: shelf)
+        #expect(manifest.order == ["a.txt"])
+        #expect(manifest.origins["a.txt"] == nil, "not the deleted item's Put Back")
+        let items = StashLibrary(stash: shelf.deletingLastPathComponent(), mover: mover).items(in: Shelf(url: shelf))
+        #expect(items.map(\.name) == ["a.txt"])
+    }
+
     @Test func putBackReturnsToOrigin() throws {
         let mover = try folder.mover()
         let original = try folder.file("Downloads/report.pdf", "PDF")

@@ -28,6 +28,7 @@ public enum NoteNaming {
         if title.count > maxTitleLength {
             title = String(title.prefix(maxTitleLength)).trimmingCharacters(in: .whitespaces)
         }
+        title = FileNaming.fitted(title)
         return title.isEmpty ? untitled : title
     }
 }
@@ -82,6 +83,19 @@ public struct NotesLibrary: Sendable {
             if pinned { manifest.pinned.append(name) }
         }
         Log.info("\(pinned ? "Pinned" : "Unpinned") note \(note.title)")
+    }
+
+    /// Pinned names whose note is gone, e.g. deleted or renamed in Finder.
+    public func vanishedPins() -> Set<String> {
+        Set(NotesManifest.read(in: folder).pinned.filter { name in
+            !FileManager.default.fileExists(atPath: folder.appending(path: name).path(percentEncoded: false))
+        })
+    }
+
+    /// Drops those pins.
+    public func forgetPins(_ names: Set<String>) throws {
+        guard !names.isEmpty else { return }
+        try NotesManifest.update(in: folder) { $0.pinned.removeAll { names.contains($0) } }
     }
 
     public func read(_ note: Note) throws -> String {

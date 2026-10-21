@@ -184,7 +184,8 @@ final class StashItemCell: NSCollectionViewItem {
         linkSite.font = UIScale.font(13)
     }
 
-    func configure(with item: StashItem, thumbnails: ThumbnailLoader) {
+    /// `scale`: the backing scale of the screen the grid is on, for thumbnails.
+    func configure(with item: StashItem, thumbnails: ThumbnailLoader, scale: CGFloat) {
         applyTextSize()
         shownURL = item.url
         let cloudOnly = item.cloud == .cloudOnly
@@ -217,8 +218,10 @@ final class StashItemCell: NSCollectionViewItem {
             show(.file)
             name.stringValue = item.name
             view.toolTip = item.name
-            icon.image = thumbnails.cached(for: item.url) ?? NSWorkspace.shared.icon(forFile: item.url.path(percentEncoded: false))
-            thumbnails.load(item.url, size: Self.iconSize, scale: view.window?.backingScaleFactor ?? 2) { [weak self] image in
+            let size = Self.iconSize
+            icon.image = thumbnails.cached(for: item, size: size, scale: scale)
+                ?? NSWorkspace.shared.icon(forFile: item.url.path(percentEncoded: false))
+            thumbnails.load(item, size: size, scale: scale) { [weak self] image in
                 guard let self, self.shownURL == item.url else { return }
                 self.icon.image = image
             }
@@ -329,7 +332,7 @@ final class CardView: NSView {
 
 /// What tiles show that has to be read from disk: Quick Look thumbnails, and
 /// the text or address of text and link items. Loaded in the background and
-/// cached per file and modification date.
+/// cached per file and modification date (thumbnails per size and scale too).
 @MainActor
 final class ThumbnailLoader {
     private let cache = NSCache<NSString, NSImage>()
@@ -371,14 +374,14 @@ final class ThumbnailLoader {
         "\(item.url.path(percentEncoded: false))|\(item.modified?.timeIntervalSince1970 ?? 0)"
     }
 
-    func cached(for url: URL) -> NSImage? {
-        cache.object(forKey: key(for: url) as NSString)
+    func cached(for item: StashItem, size: CGFloat, scale: CGFloat) -> NSImage? {
+        cache.object(forKey: thumbnailKey(for: item, size: size, scale: scale) as NSString)
     }
 
-    func load(_ url: URL, size: CGFloat, scale: CGFloat, completion: @escaping @MainActor (NSImage) -> Void) {
-        let key = key(for: url)
+    func load(_ item: StashItem, size: CGFloat, scale: CGFloat, completion: @escaping @MainActor (NSImage) -> Void) {
+        let key = thumbnailKey(for: item, size: size, scale: scale)
         if cache.object(forKey: key as NSString) != nil { return }
-        let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: size, height: size),
+        let request = QLThumbnailGenerator.Request(fileAt: item.url, size: CGSize(width: size, height: size),
                                                    scale: scale, representationTypes: .all)
         // Called on a background queue; @Sendable keeps Swift from treating it as main-thread-only.
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { @Sendable [weak self] representation, _ in
@@ -391,8 +394,8 @@ final class ThumbnailLoader {
         }
     }
 
-    private func key(for url: URL) -> String {
-        let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)?.timeIntervalSince1970 ?? 0
-        return "\(url.path(percentEncoded: false))|\(modified)"
+    /// A thumbnail made for one icon size or screen doesn't do for another.
+    private func thumbnailKey(for item: StashItem, size: CGFloat, scale: CGFloat) -> String {
+        "\(key(for: item))|\(size)@\(scale)x"
     }
 }

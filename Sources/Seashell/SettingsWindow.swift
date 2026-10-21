@@ -223,8 +223,7 @@ final class SettingsPanelWindow: NSPanel {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.intersection([.command, .shift, .option, .control]) == .command,
-           event.charactersIgnoringModifiers?.lowercased() == "w" {
+        if event.modifierFlags.intersection([.command, .shift, .option, .control]) == .command, event.shortcutKey == "w" {
             performClose(nil)
             return true
         }

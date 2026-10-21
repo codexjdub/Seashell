@@ -324,7 +324,9 @@ final class StashPanelController: NSViewController {
         guard !urls.isEmpty else { return }
         let mover = self.mover
         let step = dropper.history.begin()
+        step.expect()
         Task {
+            defer { step.landed() }
             for url in urls {
                 do {
                     let moved = try await Task.detached { try mover.move(url, toShelf: destination) }.value
@@ -458,7 +460,8 @@ extension StashPanelController: NSCollectionViewDataSource, NSCollectionViewDele
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let cell = collectionView.makeItem(withIdentifier: StashItemCell.identifier, for: indexPath)
-        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: thumbnails)
+        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: thumbnails,
+                                                scale: collectionView.window?.backingScaleFactor ?? 2)
         return cell
     }
 

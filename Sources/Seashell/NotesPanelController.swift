@@ -11,6 +11,7 @@ import SeashellCore
 /// - Rows show live titles: the open note's row follows its first line as you type.
 /// - Follows the folder: another Mac's edits show up when you have none pending.
 /// - Pinned notes stay at the top of the list (right-click → Pin).
+/// - Right-clicking a note shows its menu without opening it.
 /// - A note can open in its own window (right-click); it's then edited only
 ///   there, and choosing it here brings that window forward.
 /// - To-dos (`- [ ]`): click the box to tick it; done ones show grey and struck
@@ -23,11 +24,10 @@ final class NotesPanelController: NSViewController {
     private let store: NotesStore
     private let windows: NoteWindows
     private let table = NotesTableView()
-    private let editor = NoteTextView.make()
+    /// The note in the editor (nil while it's a new note with no file yet), and its saving.
+    private let editor: NoteEditor
     private let placeholder = PassThroughLabel(labelWithString: "Type to start a note")
     private var notes: [Note] = []
-    /// The note in the editor. Nil while it's a new note with no file yet.
-    private var current: Note?
     /// A new note is in the editor that has no file yet; it has its own row.
     private var isDraft = false
 
@@ -41,8 +41,6 @@ final class NotesPanelController: NSViewController {
     }
     /// The note to show again when the panel reopens.
     private var lastNoteName: String?
-    private var hasUnsavedEdits = false
-    private var saveTask: Task<Void, Never>?
     private var isSelectingProgrammatically = false
     /// While a note is dragged out of the list, the list holds still (reloading
     /// it would change the rows under the drag); it catches up when the drag ends.
@@ -55,7 +53,9 @@ final class NotesPanelController: NSViewController {
     init(store: NotesStore, windows: NoteWindows) {
         self.store = store
         self.windows = windows
+        editor = NoteEditor(store: store)
         super.init(nibName: nil, bundle: nil)
+        editor.onSave = { [weak self] in self?.saved($0) }
         windows.onChange = { [weak self] in self?.reloadList() }
     }
 
@@ -85,16 +85,19 @@ final class NotesPanelController: NSViewController {
         table.registerForDraggedTypes([.string])
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.onDelete = { [weak self] in self?.deleteSelectedNote() }
-        table.contextMenu = { [weak self] in self?.noteMenu() }
+        // Filled for the right-clicked row as it opens (menuNeedsUpdate).
+        let menu = NSMenu()
+        menu.delegate = self
+        table.menu = menu
         let listScroll = NSScrollView()
         listScroll.documentView = table
         listScroll.drawsBackground = false
         listScroll.hasVerticalScroller = true
         listScroll.autohidesScrollers = true
 
-        editor.delegate = self
+        editor.textView.delegate = self
         let editorScroll = NSScrollView()
-        editorScroll.documentView = editor
+        editorScroll.documentView = editor.textView
         editorScroll.drawsBackground = false
         editorScroll.hasVerticalScroller = true
         editorScroll.autohidesScrollers = true
@@ -147,7 +150,7 @@ final class NotesPanelController: NSViewController {
         headerHeight?.constant = UIScale.pt(28)
         listWidth?.constant = UIScale.pt(150)
         table.rowHeight = UIScale.pt(38)
-        editor.font = UIScale.font(13)
+        editor.textView.font = UIScale.font(13)
         placeholder.font = UIScale.font(13)
         table.reloadData()
         selectCurrentRow()
@@ -156,7 +159,7 @@ final class NotesPanelController: NSViewController {
     // MARK: Panel showing and hiding
 
     func willShow() {
-        if current == nil, editor.string.isEmpty, let name = lastNoteName,
+        if editor.note == nil, editor.text.isEmpty, let name = lastNoteName,
            let note = store.notes.first(where: { $0.url.lastPathComponent == name }), !windows.contains(note) {
             open(note)
         }
@@ -175,17 +178,16 @@ final class NotesPanelController: NSViewController {
             listIsStale = true
             return
         }
-        if let current, !hasUnsavedEdits {
-            if let onDisk = newNotes.first(where: { $0.url.lastPathComponent == current.url.lastPathComponent }) {
-                if onDisk.modified.timeIntervalSince(current.modified) > 0.001 {
-                    note("\(current.title) changed elsewhere; showing the new version")
-                    load(onDisk)
-                }
-            } else {
-                note("\(current.title) was renamed or deleted elsewhere")
-                self.current = nil
-                clearEditor()
-            }
+        // Another Mac's edits show when none are waiting here.
+        let shown = editor.note?.title ?? ""
+        switch editor.follow(newNotes) {
+        case .none:
+            break
+        case .changed:
+            note("\(shown) changed elsewhere; showing the new version")
+        case .gone:
+            note("\(shown) was renamed or deleted elsewhere")
+            editor.load(nil)
         }
         notes = newNotes
         reloadList()
@@ -200,7 +202,7 @@ final class NotesPanelController: NSViewController {
     /// The row of what's in the editor: the draft, or the open note.
     private var currentRow: Int? {
         if isDraft { return 0 }
-        guard let name = current?.url.lastPathComponent,
+        guard let name = editor.note?.url.lastPathComponent,
               let index = notes.firstIndex(where: { $0.url.lastPathComponent == name }) else { return nil }
         return index
     }
@@ -223,7 +225,7 @@ final class NotesPanelController: NSViewController {
     }
 
     private func updatePlaceholder() {
-        placeholder.isHidden = !editor.string.isEmpty
+        placeholder.isHidden = !editor.text.isEmpty
         placeholder.stringValue = isDraft ? "Type your new note"
             : notes.isEmpty ? "No notes yet. Type here, or press ⌘N." : "Type to start a note"
     }
@@ -243,30 +245,22 @@ final class NotesPanelController: NSViewController {
     }
 
     private func load(_ note: Note) {
-        let text = (try? store.library.read(note)) ?? ""
-        let selection = editor.selectedRange()
-        current = note
-        hasUnsavedEdits = false
-        editor.string = text
-        editor.setSelectedRange(NSRange(location: min(selection.location, (text as NSString).length), length: 0))
-        editor.undoManager?.removeAllActions()
-        editor.styleChecklists()
+        editor.load(note)
         updatePlaceholder()
     }
 
-
     /// Puts the keyboard in the editor.
     func focusEditor() {
-        view.window?.makeFirstResponder(editor)
+        view.window?.makeFirstResponder(editor.textView)
     }
 
     /// Opens `note` with the keyboard at its end, ready to add to it.
     func show(_ note: Note) {
         open(note)
-        guard current?.url.lastPathComponent == note.url.lastPathComponent else { return }
-        let end = NSRange(location: (editor.string as NSString).length, length: 0)
-        editor.setSelectedRange(end)
-        editor.scrollRangeToVisible(end)
+        guard editor.note?.url.lastPathComponent == note.url.lastPathComponent else { return }
+        let end = NSRange(location: (editor.text as NSString).length, length: 0)
+        editor.textView.setSelectedRange(end)
+        editor.textView.scrollRangeToVisible(end)
         focusEditor()
     }
 
@@ -274,53 +268,22 @@ final class NotesPanelController: NSViewController {
         note("new note")
         guard leaveCurrent() else { return }
         isDraft = true
-        clearEditor()
+        editor.load(nil)
         reloadList()
         updatePlaceholder()
-        view.window?.makeFirstResponder(editor)
+        focusEditor()
     }
 
-    private func scheduleSave() {
-        saveTask?.cancel()
-        saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled else { return }
-            self?.saveNow()
-        }
-    }
-
-    /// Writes pending edits. A new note gets its file now, named after its first
-    /// line. False if they couldn't be saved.
-    @discardableResult
-    private func saveNow() -> Bool {
-        saveTask?.cancel()
-        saveTask = nil
-        guard hasUnsavedEdits else { return true }
-        let text = editor.string
-        do {
-            if let current {
-                let result = try store.library.save(text, to: current)
-                self.current = result.note
-                if case .savedAsCopy = result {
-                    note("\(current.title) changed elsewhere; this version saved as \(result.note.title)")
-                }
-            } else if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                current = try store.library.create(text: text)
-                isDraft = false
-            }
-            hasUnsavedEdits = false
-            lastNoteName = current?.url.lastPathComponent
-            store.reload()
-            if isDraggingOut {
-                listIsStale = true
-            } else {
-                notes = store.notes
-                reloadList()
-            }
-            return true
-        } catch {
-            Alerts.showError("Couldn’t save the note", error)
-            return false
+    /// After the editor saved: a new note got its file (named after its first
+    /// line), or the note became a separate copy. The list catches up.
+    private func saved(_ saved: NoteSession.Saved) {
+        if case .created = saved { isDraft = false }
+        lastNoteName = editor.note?.url.lastPathComponent
+        if isDraggingOut {
+            listIsStale = true
+        } else {
+            notes = store.notes
+            reloadList()
         }
     }
 
@@ -328,9 +291,9 @@ final class NotesPanelController: NSViewController {
     /// If it couldn't be saved, it stays open with its text, and this returns false.
     @discardableResult
     private func leaveCurrent() -> Bool {
-        guard saveNow() else { return false }
+        guard editor.saveNow() else { return false }
         defer {
-            clearEditor()
+            editor.load(nil)
             reloadList()
         }
         if isDraft {
@@ -338,14 +301,13 @@ final class NotesPanelController: NSViewController {
             isDraft = false
             note("empty new note discarded")
         }
-        guard let leaving = current else { return true }
-        current = nil
+        guard let leaving = editor.note else { return true }
         do {
-            if editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if editor.isBlank {
                 try store.library.delete(leaving)
                 lastNoteName = nil
             } else {
-                lastNoteName = try store.library.renameToFirstLine(leaving, text: editor.string).url.lastPathComponent
+                lastNoteName = try editor.renameToFirstLine()?.url.lastPathComponent
             }
         } catch {
             Log.error("Couldn’t tidy up note \(leaving.title): \(error.localizedDescription)")
@@ -354,17 +316,11 @@ final class NotesPanelController: NSViewController {
         return true
     }
 
-    /// Empties the editor, and forgets its typing: ⌘Z mustn't bring back
-    /// another note's words.
-    private func clearEditor() {
-        editor.string = ""
-        editor.undoManager?.removeAllActions()
-    }
-
     // MARK: List actions
 
-    private func noteMenu() -> NSMenu {
-        let menu = NSMenu()
+    /// The right-clicked row's menu. Its items carry the note they're about,
+    /// so they act on it whatever is selected meanwhile.
+    private func fill(_ menu: NSMenu, for row: Row) {
         @discardableResult
         func add(_ title: String, _ action: Selector?, for note: Note? = nil) -> NSMenuItem {
             let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
@@ -372,18 +328,19 @@ final class NotesPanelController: NSViewController {
             item.representedObject = note?.url
             return item
         }
-        if rows.indices.contains(table.selectedRow), case .note(let selected) = rows[table.selectedRow] {
-            add("Open in Its Own Window", #selector(openInWindow), for: selected)
-            add("Open With", nil).submenu = openWithMenu(for: selected)
-            add("Show in Finder", #selector(showInFinder), for: selected)
-            menu.addItem(.separator())
-            add("Copy", #selector(copyNote), for: selected)
-            add("Duplicate", #selector(duplicateNote), for: selected)
-            add(selected.isPinned ? "Unpin" : "Pin", #selector(togglePin), for: selected)
-            menu.addItem(.separator())
+        guard case .note(let clicked) = row else {
+            add("Move to Trash", #selector(discardDraftFromMenu))
+            return
         }
-        add("Move to Trash", #selector(deleteSelectedNote))
-        return menu
+        add("Open in Its Own Window", #selector(openInWindow), for: clicked)
+        add("Open With", nil).submenu = openWithMenu(for: clicked)
+        add("Show in Finder", #selector(showInFinder), for: clicked)
+        menu.addItem(.separator())
+        add("Copy", #selector(copyNote), for: clicked)
+        add("Duplicate", #selector(duplicateNote), for: clicked)
+        add(clicked.isPinned ? "Unpin" : "Pin", #selector(togglePin), for: clicked)
+        menu.addItem(.separator())
+        add("Move to Trash", #selector(trashFromMenu), for: clicked)
     }
 
     /// Apps that open Markdown files, the default one first.
@@ -426,14 +383,14 @@ final class NotesPanelController: NSViewController {
     /// Writes edits waiting for `note`, here or in its window, so other apps
     /// and copies get the latest text.
     private func flush(_ note: Note) {
-        if note.url.lastPathComponent == current?.url.lastPathComponent { saveNow() }
+        if note.url.lastPathComponent == editor.note?.url.lastPathComponent { editor.saveNow() }
         windows.saveNow(note)
     }
 
     @objc private func openInWindow(_ sender: NSMenuItem) {
         guard var target = menuNote(sender) else { return }
         note("Open in Its Own Window \(target.title)")
-        if target.url.lastPathComponent == current?.url.lastPathComponent {
+        if target.url.lastPathComponent == editor.note?.url.lastPathComponent {
             // Leaving it saves it and renames it to its first line (or trashes it if empty).
             guard leaveCurrent(), let name = lastNoteName,
                   let left = store.notes.first(where: { $0.url.lastPathComponent == name }) else { return }
@@ -496,30 +453,45 @@ final class NotesPanelController: NSViewController {
         store.reload()
     }
 
-    @objc private func deleteSelectedNote() {
+    /// ⌘⌫: the selected note goes to the Trash, or the new note is discarded.
+    private func deleteSelectedNote() {
         let selected = table.selectedRow
         guard rows.indices.contains(selected) else { return }
-        guard case .note(let target) = rows[selected] else {
-            note("new note discarded")
-            saveTask?.cancel()
-            hasUnsavedEdits = false
-            isDraft = false
-            clearEditor()
-            reloadList()
-            updatePlaceholder()
-            return
+        switch rows[selected] {
+        case .draft: discardDraft()
+        case .note(let target): trash(target)
         }
+    }
+
+    @objc private func trashFromMenu(_ sender: NSMenuItem) {
+        guard let target = menuNote(sender) else { return }
+        trash(target)
+    }
+
+    @objc private func discardDraftFromMenu() {
+        guard isDraft else { return }
+        discardDraft()
+    }
+
+    /// The new note, which has no file yet, just goes.
+    private func discardDraft() {
+        note("new note discarded")
+        isDraft = false
+        editor.load(nil)  // with nothing waiting to be saved
+        reloadList()
+        updatePlaceholder()
+    }
+
+    private func trash(_ target: Note) {
         note("Move to Trash \(target.title)")
-        if target.url.lastPathComponent == current?.url.lastPathComponent {
-            // Don't save or rename what's about to go.
-            saveTask?.cancel()
-            hasUnsavedEdits = false
-            current = nil
-            clearEditor()
+        // Its window saves what it has, then closes, so the Trash gets the
+        // latest. If it can't save, it stays open with the text, and the note stays.
+        guard windows.closeForTrash(target) else { return note("\(target.title) stays: its window couldn’t save") }
+        if target.url.lastPathComponent == editor.note?.url.lastPathComponent {
+            // Don't save or rename what's about to go: the editor lets go of it unsaved.
+            editor.load(nil)
             lastNoteName = nil
         }
-        // Its window saves what it has, then closes, so the Trash gets the latest.
-        windows.closeForTrash(target)
         do {
             try store.library.delete(target)
         } catch {
@@ -537,9 +509,8 @@ final class NotesPanelController: NSViewController {
 
 extension NotesPanelController: NSTextViewDelegate {
     func textDidChange(_ notification: Notification) {
-        hasUnsavedEdits = true
-        editor.styleChecklists()
-        if current == nil, !isDraft {
+        editor.textChanged()
+        if editor.note == nil, !isDraft {
             // Typing with nothing open starts a new note.
             isDraft = true
             reloadList()
@@ -547,7 +518,18 @@ extension NotesPanelController: NSTextViewDelegate {
             refreshCurrentRow()
         }
         updatePlaceholder()
-        scheduleSave()
+    }
+}
+
+// MARK: Right-click menu
+
+extension NotesPanelController: NSMenuDelegate {
+    /// Fills the list's menu for the row that was right-clicked.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let row = table.clickedRow
+        guard rows.indices.contains(row) else { return }
+        fill(menu, for: rows[row])
     }
 }
 
@@ -560,12 +542,12 @@ extension NotesPanelController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: NoteRowView.identifier, owner: nil) as? NoteRowView ?? NoteRowView()
-        let typed = editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : NoteNaming.title(for: editor.string)
+        let typed = editor.isBlank ? nil : NoteNaming.title(for: editor.text)
         switch rows[row] {
         case .draft:
             cell.show(title: typed ?? "New Note", detail: "Not saved yet", pinned: false, windowed: false)
         case .note(let note):
-            let isOpen = note.url.lastPathComponent == current?.url.lastPathComponent
+            let isOpen = note.url.lastPathComponent == editor.note?.url.lastPathComponent
             cell.show(title: isOpen ? (typed ?? note.title) : note.title,
                       detail: note.modified.formatted(date: .abbreviated, time: .shortened),
                       pinned: note.isPinned, windowed: windows.contains(note))
@@ -580,7 +562,7 @@ extension NotesPanelController: NSTableViewDataSource, NSTableViewDelegate {
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !isSelectingProgrammatically, rows.indices.contains(table.selectedRow),
               case .note(let selected) = rows[table.selectedRow] else { return }
-        guard selected.url.lastPathComponent != current?.url.lastPathComponent else { return }
+        guard selected.url.lastPathComponent != editor.note?.url.lastPathComponent else { return }
         note("opened \(selected.title)")
         open(selected)
     }
@@ -590,7 +572,7 @@ extension NotesPanelController: NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
         guard case .note(let dragged) = rows[row] else { return nil }  // a new note has nothing to drag yet
         isDraggingOut = true
-        if dragged.url.lastPathComponent == current?.url.lastPathComponent { saveNow() }
+        if dragged.url.lastPathComponent == editor.note?.url.lastPathComponent { editor.saveNow() }
         let text = (try? store.library.read(dragged)) ?? ""
         note("dragging out \(dragged.title)")
         return DragOut.writer(forNote: dragged.url, text: text)
@@ -711,11 +693,11 @@ final class NoteSelectionRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
 }
 
-/// The notes list: ⌘⌫ deletes, and right-clicking a row selects it first.
+/// The notes list: ⌘⌫ deletes, and right-clicking a row shows its menu
+/// (rings it, without selecting it); below the rows there's none.
 @MainActor
 final class NotesTableView: NSTableView {
     var onDelete: (() -> Void)?
-    var contextMenu: (() -> NSMenu?)?
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 51, event.modifierFlags.intersection([.command, .shift, .option, .control]) == .command {
@@ -726,9 +708,6 @@ final class NotesTableView: NSTableView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        let row = self.row(at: convert(event.locationInWindow, from: nil))
-        guard row >= 0 else { return nil }
-        selectRowIndexes([row], byExtendingSelection: false)
-        return contextMenu?()
+        row(at: convert(event.locationInWindow, from: nil)) >= 0 ? super.menu(for: event) : nil
     }
 }

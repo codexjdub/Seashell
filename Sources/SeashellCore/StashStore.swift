@@ -14,17 +14,14 @@ public final class StashStore {
     @ObservationIgnored public var onChange: (() -> Void)?
     @ObservationIgnored private var watcher: FolderWatcher?
 
-    /// How long a manifest entry's item must stay gone before the entry is
-    /// dropped. Another Mac's manifest can arrive through iCloud slightly before
-    /// the item itself, and that entry must survive the wait.
-    @ObservationIgnored private let pruneGrace: TimeInterval
-    /// "Shelf/name" → when it was first seen missing.
-    @ObservationIgnored private var missingSince: [String: Date] = [:]
-    @ObservationIgnored private var pruneCheck: Task<Void, Never>?
+    /// Manifest entries ("Shelf/name") whose items have gone.
+    @ObservationIgnored private let vanished: VanishedEntries
 
+    /// `pruneGrace`: how long a manifest entry's item must stay gone before the
+    /// entry is dropped (see VanishedEntries).
     public init(library: StashLibrary, pruneGrace: TimeInterval = 60) {
         self.library = library
-        self.pruneGrace = pruneGrace
+        vanished = VanishedEntries(grace: pruneGrace)
         reload()
     }
 
@@ -32,6 +29,14 @@ public final class StashStore {
 
     public func items(in shelf: Shelf) -> [StashItem] {
         itemsByShelf[shelf.name] ?? []
+    }
+
+    /// The most recently added items across every shelf, newest first: what the
+    /// grab shelf offers.
+    public func recentItems(limit: Int) -> [StashItem] {
+        Array(shelves.flatMap { items(in: $0) }
+            .sorted { ($0.added ?? .distantPast) > ($1.added ?? .distantPast) }
+            .prefix(limit))
     }
 
     /// Re-reads the disk. Only real differences are published, so views don't
@@ -51,40 +56,23 @@ public final class StashStore {
         }
     }
 
-    /// Forgets manifest entries whose items have been gone for `pruneGrace`, and
-    /// schedules another look for the ones still within it.
-    private func pruneVanishedEntries(now: Date = .now) {
-        var stillWaiting: [String: Date] = [:]
-        var nextCheck: TimeInterval?
+    /// Forgets manifest entries whose items have been gone for `pruneGrace`; the
+    /// ones still within it get another look when it's up.
+    private func pruneVanishedEntries() {
+        var gone: [String: (shelf: Shelf, name: String)] = [:]
         for shelf in shelves {
-            var expired: Set<String> = []
-            for name in library.vanishedEntries(in: shelf) {
-                let key = "\(shelf.name)/\(name)"
-                let since = missingSince[key] ?? now
-                let waited = now.timeIntervalSince(since)
-                if waited >= pruneGrace {
-                    expired.insert(name)
-                } else {
-                    stillWaiting[key] = since
-                    nextCheck = min(nextCheck ?? .infinity, pruneGrace - waited)
-                }
-            }
-            guard !expired.isEmpty else { continue }
+            for name in library.vanishedEntries(in: shelf) { gone["\(shelf.name)/\(name)"] = (shelf, name) }
+        }
+        let expired = vanished.expired(among: Set(gone.keys)) { [weak self] in self?.reload() }.compactMap { gone[$0] }
+        for shelf in shelves {
+            let names = Set(expired.filter { $0.shelf == shelf }.map(\.name))
+            guard !names.isEmpty else { continue }
             do {
-                try library.forget(expired, in: shelf)
-                Log.info("Forgot \(expired.count) item(s) no longer in \(shelf.name): \(expired.sorted().joined(separator: ", "))")
+                try library.forget(names, in: shelf)
+                Log.info("Forgot \(names.count) item(s) no longer in \(shelf.name): \(names.sorted().joined(separator: ", "))")
             } catch {
                 Log.error("Couldn’t update \(shelf.name)’s \(ShelfManifest.fileName): \(error.localizedDescription)")
             }
-        }
-        missingSince = stillWaiting
-
-        pruneCheck?.cancel()
-        guard let nextCheck else { return }
-        pruneCheck = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(nextCheck))
-            guard !Task.isCancelled else { return }
-            self?.reload()
         }
     }
 }

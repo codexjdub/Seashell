@@ -15,6 +15,7 @@ final class StashDropper {
     /// What ⌘Z takes back: each drop or paste is a step, as are moves between
     /// shelves (recorded by the shelf tabs).
     let history = StashUndoHistory()
+    private var isUndoing = false
     private let mover: FileMover
     private let promiseQueue = OperationQueue()
     /// Where promised files land before they move into a shelf.
@@ -27,7 +28,9 @@ final class StashDropper {
     }
 
     /// Answer `move` only for files: Finder leaves the moving to us. A text
-    /// source such as TextEdit would delete the dragged text on `move`.
+    /// source such as TextEdit would delete the dragged text on `move`. Files
+    /// whose drag doesn't allow moving (⌥ held, or an app that only lets them be
+    /// copied) are a `copy`, and copied in.
     /// Items dragged out of Seashell's own grid are already stashed: refused here
     /// (moving them between shelves is the shelf tabs' job).
     static func operation(for info: any NSDraggingInfo) -> NSDragOperation {
@@ -40,9 +43,11 @@ final class StashDropper {
         return offered.contains(.generic) ? .generic : []
     }
 
-    /// Stashes everything in the drop into `shelf`. Returns false if nothing was usable.
+    /// Stashes everything in the drop into `shelf`: files move in, or are copied
+    /// in when the drop is a copy (see `operation(for:)`), so they go as the
+    /// pointer's badge says. Returns false if nothing was usable.
     func accept(_ info: any NSDraggingInfo, into shelf: URL) -> Bool {
-        accept(info.draggingPasteboard, into: shelf, copyingFiles: false)
+        accept(info.draggingPasteboard, into: shelf, copyingFiles: Self.operation(for: info) == .copy)
     }
 
     /// "Stash in Seashell" in the Services menu: like a drop of the selection.
@@ -67,6 +72,8 @@ final class StashDropper {
 
         // Read now: the drag's pasteboard is gone by the time a slow promise gives up.
         let fallback = objects.contains { $0 is NSFilePromiseReceiver } ? PromiseFallback(pasteboard) : nil
+        let titles = Self.linkTitles(on: pasteboard)
+        let links = objects.filter { ($0 as? URL)?.isFileURL == false }.count
         let step = history.begin()
 
         var files: [URL] = []
@@ -77,7 +84,9 @@ final class StashDropper {
             case let url as URL where url.isFileURL:
                 files.append(url)
             case let url as URL:
-                run("link", step) { try $0.stash(link: url, title: pasteboard.string(forType: Self.urlTitleType), into: shelf) }
+                // Its own title, or a lone link's from the drag as a whole.
+                let title = titles[url.absoluteString] ?? (links == 1 ? pasteboard.string(forType: Self.urlTitleType) : nil)
+                run("link", step) { try $0.stash(link: url, title: title, into: shelf) }
             case let image as NSImage:
                 // A lone picture's PNG goes in as it is, rather than through a
                 // full-size TIFF; anything else is converted in the background.
@@ -91,9 +100,25 @@ final class StashDropper {
             }
         }
         if !files.isEmpty {
-            Task { await stash(files, into: shelf, rememberOrigin: true, copying: copyingFiles, step: step) }
+            step.expect()
+            Task {
+                await stash(files, into: shelf, rememberOrigin: true, copying: copyingFiles, step: step)
+                step.landed()
+            }
         }
         return true
+    }
+
+    /// Each link's title, by its address: browsers put both on the link's own
+    /// pasteboard item.
+    private static func linkTitles(on pasteboard: NSPasteboard) -> [String: String] {
+        var titles: [String: String] = [:]
+        for item in pasteboard.pasteboardItems ?? [] {
+            if let address = item.string(forType: .URL), let title = item.string(forType: urlTitleType) {
+                titles[address] = title
+            }
+        }
+        return titles
     }
 
     /// Moves files in one by one, off the main thread, asking first about ones
@@ -137,11 +162,16 @@ final class StashDropper {
             report("Couldn’t receive the dropped file", error)
             return
         }
+        // The reader below is called once for each promised file.
+        for _ in 0..<max(1, receiver.fileNames.count) { step.expect() }
         // Runs on promiseQueue. Marked @Sendable so Swift doesn't treat it as
         // main-thread-only (it's written inside a main-actor method) and stop the app.
         receiver.receivePromisedFiles(atDestination: incoming, options: [:], operationQueue: promiseQueue) { @Sendable file, error in
             Task { @MainActor in
-                defer { Self.cleanUp(file, in: incoming) }
+                defer {
+                    Self.cleanUp(file, in: incoming)
+                    step.landed()
+                }
                 if let error {
                     self.report("Couldn’t receive “\(file.lastPathComponent)”", error)
                     return
@@ -208,7 +238,9 @@ final class StashDropper {
     private func runInBackground(_ what: String, _ step: StashUndoHistory.Step,
                                  _ body: @escaping @Sendable (FileMover) throws -> URL) {
         let mover = self.mover
+        step.expect()
         Task {
+            defer { step.landed() }
             do {
                 step.record(.added(try await Task.detached { try body(mover) }.value))
             } catch {
@@ -218,9 +250,18 @@ final class StashDropper {
     }
 
     /// ⌘Z: takes back the latest drop, paste or move between shelves, whichever
-    /// shelf it went to. False if there was nothing left to take back.
+    /// shelf it went to. One still landing (a big copy, a promised file) is taken
+    /// back once it has landed. False if there was nothing left to take back, or
+    /// an earlier ⌘Z is still waiting.
     func undoLast() async -> Bool {
-        guard let changes = history.popLatest() else { return false }
+        guard !isUndoing, let step = history.popLatest() else { return false }
+        isUndoing = true
+        defer { isUndoing = false }
+        if step.isLanding {
+            Log.info("Undo: waiting for the last drop to land")
+            await step.untilLanded()
+        }
+        let changes = step.changes
         // Items since moved, renamed or trashed are left alone.
         let present = changes.filter { FileManager.default.fileExists(atPath: $0.item.path(percentEncoded: false)) }
         Log.info("Undo: \(present.count) of \(changes.count) \(changes.count == 1 ? "item" : "items") from the last drop")

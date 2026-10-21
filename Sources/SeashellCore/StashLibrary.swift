@@ -25,6 +25,8 @@ public struct StashItem: Identifiable, Hashable, Sendable {
     /// Part of the item's identity for redrawing: editing the file in place or
     /// iCloud finishing a download changes the item, so its tile refreshes.
     public let modified: Date?
+    /// When it arrived on its shelf, for the grab shelf's newest first.
+    public let added: Date?
     public let cloud: CloudState
     public var id: URL { url }
     public var name: String { url.lastPathComponent }
@@ -103,16 +105,17 @@ public struct StashLibrary: Sendable {
     }
 
     /// Items added outside Seashell (in Finder, or not yet in the manifest) come
-    /// first, newest first; then the manifest's order.
+    /// first, newest first; then the manifest's order. A name the manifest lists
+    /// twice shows once.
     public func items(in shelf: Shelf) -> [StashItem] {
         let manifest = ShelfManifest.read(in: shelf.url)
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .addedToDirectoryDateKey, .contentModificationDateKey]
         let urls = contents(of: shelf.url, keys: keys)
         let byName = Dictionary(urls.map { ($0.lastPathComponent, $0) }, uniquingKeysWith: { first, _ in first })
-        let listed = manifest.order.compactMap { byName[$0] }
-        let listedNames = Set(manifest.order)
+        var seen: Set<String> = []
+        let listed = manifest.order.filter { seen.insert($0).inserted }.compactMap { byName[$0] }
         let unlisted = urls
-            .filter { !listedNames.contains($0.lastPathComponent) }
+            .filter { !seen.contains($0.lastPathComponent) }
             .sorted { dateAdded($0) > dateAdded($1) }
         return (unlisted + listed).map { url in
             let values = try? url.resourceValues(forKeys: keys)
@@ -120,16 +123,9 @@ public struct StashLibrary: Sendable {
                              kind: StashItem.kind(of: url, isDirectory: values?.isDirectory == true, isPackage: values?.isPackage == true),
                              origin: manifest.origins[url.lastPathComponent],
                              modified: values?.contentModificationDate,
+                             added: values?.addedToDirectoryDate,
                              cloud: CloudStatus.state(of: url))
         }
-    }
-
-    /// The most recently added items across every shelf, newest first: what the
-    /// grab shelf offers.
-    public func recentItems(limit: Int) -> [StashItem] {
-        Array(shelves().flatMap { items(in: $0) }
-            .sorted { dateAdded($0.url) > dateAdded($1.url) }
-            .prefix(limit))
     }
 
     /// Names the shelf's manifest still lists although the item is gone, e.g.

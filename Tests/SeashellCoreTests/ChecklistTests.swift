@@ -20,6 +20,12 @@ struct ChecklistTests {
         #expect(ns.substring(with: items[2].line) == "  * [X] nested")
     }
 
+    @Test func findsToDosInSomeLines() {
+        let text = "- [x] one\n- [ ] two\n- [x] three"
+        let second = (text as NSString).lineRange(for: NSRange(location: 12, length: 0))
+        #expect(Checklist.items(in: text, range: second).map(\.isDone) == [false])
+    }
+
     @Test func itemAtLocationLooksAtThatLine() {
         let text = "Title\n- [ ] milk\nmore"
         #expect(Checklist.item(at: 0, in: text) == nil)

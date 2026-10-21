@@ -26,10 +26,10 @@ public enum Checklist {
         pattern: #"^[ \t]*([-*+]) \[([ xX])\](?=[ \t]|$)"#, options: [.anchorsMatchLines])
     private static let bullet = try! NSRegularExpression(pattern: #"^[ \t]*[-*+] "#)
 
-    /// Every to-do in `text`, top to bottom.
-    public static func items(in text: String) -> [Item] {
+    /// Every to-do in `text`, or in whole lines `range` of it, top to bottom.
+    public static func items(in text: String, range: NSRange? = nil) -> [Item] {
         let ns = text as NSString
-        return task.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { item(from: $0, in: ns) }
+        return task.matches(in: text, range: range ?? NSRange(location: 0, length: ns.length)).map { item(from: $0, in: ns) }
     }
 
     /// The to-do on the line holding `location`, if that line is one.

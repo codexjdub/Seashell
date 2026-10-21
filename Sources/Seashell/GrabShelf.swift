@@ -130,7 +130,7 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
     }
 
     func show(at point: NSPoint) {
-        items = store.library.recentItems(limit: Self.maxItems)
+        items = store.recentItems(limit: Self.maxItems)
         title.font = UIScale.font(13, weight: .semibold)
         emptyLabel.font = UIScale.font(13)
         moreButton.font = UIScale.font(12)
@@ -230,7 +230,8 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let cell = collectionView.makeItem(withIdentifier: StashItemCell.identifier, for: indexPath)
-        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: thumbnails)
+        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: thumbnails,
+                                                scale: collectionView.window?.backingScaleFactor ?? 2)
         return cell
     }
 
