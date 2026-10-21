@@ -207,18 +207,95 @@ struct FileMoverTests {
         #expect(try FileSize.measure(source.appending(path: "Trip")).items == 4)
     }
 
-    static func tinyImage(as type: UTType) throws -> Data {
-        let context = try #require(CGContext(data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
+    static func tinyImage(as type: UTType, width: Int = 2, height: Int = 2, orientation: Int = 1) throws -> Data {
+        let context = try #require(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                              space: CGColorSpaceCreateDeviceRGB(),
                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
         context.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
-        context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         let image = try #require(context.makeImage())
         let data = NSMutableData()
         let destination = try #require(CGImageDestinationCreateWithData(data as CFMutableData, type.identifier as CFString, 1, nil))
-        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationAddImage(destination, image, [kCGImagePropertyOrientation: orientation] as CFDictionary)
         #expect(CGImageDestinationFinalize(destination))
         return data as Data
+    }
+
+    // MARK: Several at once
+
+    @Test func batchesWriteEachManifestOnce() throws {
+        let mover = try folder.mover()
+        let work = try folder.folder("Stash/Work")
+        let sources = try ["a.txt", "b.txt", "c.txt"].map { try folder.file("Downloads/\($0)", $0) }
+        let stashed = try mover.stash(sources, into: shelf).map { try $0.get() }
+        #expect(stashed.map(\.lastPathComponent) == ["a.txt", "b.txt", "c.txt"])
+        #expect(ShelfManifest.read(in: shelf).order == ["c.txt", "b.txt", "a.txt"], "newest first, as one by one")
+        #expect(ShelfManifest.read(in: shelf).origins.count == 3)
+
+        let moved = try mover.move(Array(stashed.prefix(2)), toShelf: work).map { try $0.get() }
+        #expect(ShelfManifest.read(in: shelf).order == ["c.txt"])
+        #expect(ShelfManifest.read(in: work).order == ["b.txt", "a.txt"])
+        #expect(ShelfManifest.read(in: work).origins["a.txt"] == source.path(percentEncoded: false), "Put Back moves with them")
+
+        let back = try mover.putBack(moved).map { try $0.get() }
+        #expect(back == Array(sources.prefix(2)))
+        #expect(ShelfManifest.read(in: work) == ShelfManifest())
+
+        for result in mover.delete([stashed[2]]) { try result.get() }
+        #expect(ShelfManifest.read(in: shelf) == ShelfManifest())
+        #expect(folder.names(in: folder.root.appending(path: "Trash")) == ["c.txt"])
+    }
+
+    @Test func batchReportsEachItemsOwnFailure() throws {
+        let mover = try folder.mover()
+        let kept = try mover.stash(text: "keep", into: shelf)
+        let results = mover.delete([shelf.appending(path: "gone.txt"), kept])
+        #expect(throws: (any Error).self) { try results[0].get() }
+        #expect(throws: Never.self) { try results[1].get() }
+        #expect(!exists(kept))
+    }
+
+    @Test func batchFailsWhereTheManifestCantBeWritten() throws {
+        let mover = try folder.mover()
+        let a = try folder.file("Stash/Main/a.txt")
+        let b = try folder.file("Stash/Main/b.txt")
+        try folder.file("Stash/Main/\(ShelfManifest.fileName)", "{ not json")
+        for result in mover.delete([a, b]) {
+            #expect(throws: ShelfManifestError.unreadable("Main")) { try result.get() }
+        }
+        #expect(!exists(a) && !exists(b), "trashed all the same, as one at a time did")
+    }
+
+    @Test func undoingADropTakesBackEveryFile() throws {
+        let mover = try folder.mover()
+        let sources = try ["a.txt", "b.txt"].map { try folder.file("Downloads/\($0)") }
+        let stashed = try mover.stash(sources, into: shelf).map { try $0.get() }
+        let snippet = try mover.stash(text: "note", into: shelf)
+        let changes = zip(stashed, sources).map { StashChange.movedIn($0, from: $1) } + [.added(snippet)]
+        for result in mover.undo(changes.reversed()) { _ = try result.get() }
+        #expect(sources.allSatisfy(exists))
+        #expect(ShelfManifest.read(in: shelf) == ShelfManifest())
+    }
+
+    @Test func sizeTakenEarlierSkipsWalkingAgainButStillChecks() throws {
+        try folder.file("Downloads/Trip/a.txt", "12345")
+        let trip = source.appending(path: "Trip")
+        let mover = try folder.mover(simulateOtherVolume: true)
+        let measured = try FileSize.measure(trip)
+        try folder.file("Downloads/Trip/b.txt", "added after it was measured")
+
+        let result = mover.stash([trip], into: shelf, measured: [trip: measured])
+        #expect(throws: FileMoverError.copyMismatch("Trip")) { try result[0].get() }
+        #expect(exists(trip.appending(path: "b.txt")), "the original stays")
+        #expect(try mover.stash([trip], into: shelf, measured: [trip: FileSize.measure(trip)])[0].get().lastPathComponent == "Trip")
+    }
+
+    @Test func photosStoredOnTheirSideComeOutUpright() throws {
+        let wide = try Self.tinyImage(as: .jpeg, width: 4, height: 2, orientation: 6)  // stored 4 × 2, shown turned
+        let png = try ImageConversion.png(from: wide)
+        let source = try #require(CGImageSourceCreateWithData(png as CFData, nil))
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        #expect((image.width, image.height) == (2, 4))
     }
 
     @Test func stashingAFileAlreadyInTheShelfLeavesIt() throws {

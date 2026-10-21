@@ -10,9 +10,9 @@ enum ItemActions {
     static func object(for item: StashItem) -> any NSPasteboardWriting {
         switch item.kind {
         case .text:
-            if let text = ItemContent.text(of: item.url) { return text as NSString }
+            if let text = ItemContent.text(of: item) { return text as NSString }
         case .link:
-            if let link = ItemContent.link(of: item.url) { return link as NSURL }
+            if let link = ItemContent.link(of: item) { return link as NSURL }
         case .file, .folder:
             break
         }

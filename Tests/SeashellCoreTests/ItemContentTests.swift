@@ -26,6 +26,15 @@ struct ItemContentTests {
         #expect(ItemContent.text(of: snippet) == "Héllo, wörld\nsecond line")
     }
 
+    @Test func itemsOnlyInICloudAreNotRead() throws {
+        let snippet = try folder.file("note.txt", "words")
+        func item(_ cloud: CloudState) -> StashItem {
+            StashItem(url: snippet, kind: .text, origin: nil, modified: nil, added: nil, cloud: cloud)
+        }
+        #expect(ItemContent.text(of: item(.local)) == "words")
+        #expect(ItemContent.text(of: item(.cloudOnly)) == nil, "taken from the item, not asked again")
+    }
+
     @Test func bigTextIsLeftAsAFile() throws {
         let big = try folder.file("big.txt", String(repeating: "a", count: ItemContent.maxTextBytes + 1))
         #expect(ItemContent.text(of: big) == nil)

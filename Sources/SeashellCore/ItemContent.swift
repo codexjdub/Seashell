@@ -9,8 +9,16 @@ public enum ItemContent {
     /// The text of a text item. Nil if it's too big, not text, or only in iCloud
     /// (reading it would stall while it downloads).
     public static func text(of url: URL) -> String? {
-        guard let size = try? FileSize.of(url), size <= maxTextBytes,
-              CloudStatus.state(of: url) != .cloudOnly,
+        text(of: url, cloudOnly: { CloudStatus.state(of: url) == .cloudOnly })
+    }
+
+    /// The same, going by what `item` already knows about iCloud rather than asking again.
+    public static func text(of item: StashItem) -> String? {
+        text(of: item.url, cloudOnly: { item.cloud == .cloudOnly })
+    }
+
+    private static func text(of url: URL, cloudOnly: () -> Bool) -> String? {
+        guard let size = try? FileSize.of(url), size <= maxTextBytes, !cloudOnly(),
               let data = try? Coordinated.read(url, { try Data(contentsOf: $0) })
         else { return nil }
         return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
@@ -32,7 +40,16 @@ public enum ItemContent {
 
     /// The address in a `.webloc`.
     public static func link(of url: URL) -> URL? {
-        guard CloudStatus.state(of: url) != .cloudOnly,
+        link(of: url, cloudOnly: CloudStatus.state(of: url) == .cloudOnly)
+    }
+
+    /// The same, going by what `item` already knows about iCloud rather than asking again.
+    public static func link(of item: StashItem) -> URL? {
+        link(of: item.url, cloudOnly: item.cloud == .cloudOnly)
+    }
+
+    private static func link(of url: URL, cloudOnly: Bool) -> URL? {
+        guard !cloudOnly,
               let data = try? Coordinated.read(url, { try Data(contentsOf: $0) }),
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let address = plist["URL"] as? String

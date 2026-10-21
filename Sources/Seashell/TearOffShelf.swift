@@ -115,7 +115,6 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
     private let layout = NSCollectionViewFlowLayout()
     private let title = NSTextField(labelWithString: "")
     private lazy var closeButton = PillButton(target: self, action: #selector(closeClicked))
-    private let thumbnails = ThumbnailLoader()
     private let preview = PreviewWindow()
     private var headerHeight: NSLayoutConstraint?
     private var closeSize: [NSLayoutConstraint] = []
@@ -229,7 +228,7 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let cell = collectionView.makeItem(withIdentifier: StashItemCell.identifier, for: indexPath)
-        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: thumbnails,
+        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: .shared,
                                                 scale: collectionView.window?.backingScaleFactor ?? 2)
         return cell
     }
@@ -248,7 +247,7 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
 
     func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession,
                         willBeginAt screenPoint: NSPoint, forItemsAt indexPaths: Set<IndexPath>) {
-        for indexPath in indexPaths where CloudStatus.state(of: items[indexPath.item].url) == .cloudOnly {
+        for indexPath in indexPaths where items[indexPath.item].cloud == .cloudOnly {
             try? CloudStatus.startDownloading(items[indexPath.item].url)
         }
     }
@@ -308,11 +307,11 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
         add("Rename…", enabled: selection.count == 1) { [weak self] in
             guard let self, let item = selection.first else { return }
             ItemActions.rename(item, with: self.mover)
-            self.store.reload()
+            self.store.reload(around: [item.url])
         }
         menu.addItem(.separator())
         add("Put Back", enabled: !selection.isEmpty && selection.allSatisfy { $0.origin != nil }) { [weak self] in
-            self?.perform("put back", selection.filter { $0.origin != nil }.map(\.url)) { _ = try $0.putBack($1) }
+            self?.perform("put back", selection.filter { $0.origin != nil }.map(\.url)) { $0.putBack($1) }
         }
         add("Move to Trash") { [weak self] in self?.deleteSelection() }
         return menu
@@ -329,7 +328,7 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
         note("undo")
         Task {
             if await dropper.undoLast() {
-                store.reload()
+                store.reload(around: nil)
             } else {
                 NSSound.beep()
             }
@@ -337,23 +336,21 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
     }
 
     private func deleteSelection() {
-        perform("move to the Trash", selectedItems.map(\.url)) { try $0.delete($1) }
+        perform("move to the Trash", selectedItems.map(\.url)) { $0.delete($1) }
     }
 
-    /// Runs a file operation on each item off the main thread, reporting failures.
-    private func perform(_ verb: String, _ urls: [URL], _ operation: @escaping @Sendable (FileMover, URL) throws -> Void) {
+    /// Runs a file operation on the items off the main thread, reporting failures.
+    private func perform<T: Sendable>(_ verb: String, _ urls: [URL],
+                                      _ operation: @escaping @Sendable (FileMover, [URL]) -> [Result<T, any Error>]) {
         guard !urls.isEmpty else { return }
         note("\(verb): \(urls.count) item\(urls.count == 1 ? "" : "s")")
         let mover = self.mover
         Task {
-            for url in urls {
-                do {
-                    try await Task.detached { try operation(mover, url) }.value
-                } catch {
-                    Alerts.showError("Couldn’t \(verb) “\(url.lastPathComponent)”", error)
-                }
+            let results = await Task.detached { operation(mover, urls) }.value
+            for (url, result) in zip(urls, results) {
+                if case .failure(let error) = result { Alerts.showError("Couldn’t \(verb) “\(url.lastPathComponent)”", error) }
             }
-            store.reload()
+            store.reload(around: urls)
         }
     }
 

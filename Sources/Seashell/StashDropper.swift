@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SeashellCore
 
 /// Turns a drop (files, promised files, links, images, text) into Stash items.
@@ -74,10 +75,13 @@ final class StashDropper {
         let fallback = objects.contains { $0 is NSFilePromiseReceiver } ? PromiseFallback(pasteboard) : nil
         let titles = Self.linkTitles(on: pasteboard)
         let links = objects.filter { ($0 as? URL)?.isFileURL == false }.count
+        // Each object is its pasteboard item's when every item gave one.
+        let items = pasteboard.pasteboardItems ?? []
+        let ownItems = items.count == objects.count
         let step = history.begin()
 
         var files: [URL] = []
-        for object in objects {
+        for (index, object) in objects.enumerated() {
             switch object {
             case let receiver as NSFilePromiseReceiver:
                 receive(receiver, into: shelf, fallback: fallback ?? PromiseFallback(pasteboard), step: step)
@@ -88,10 +92,12 @@ final class StashDropper {
                 let title = titles[url.absoluteString] ?? (links == 1 ? pasteboard.string(forType: Self.urlTitleType) : nil)
                 run("link", step) { try $0.stash(link: url, title: title, into: shelf) }
             case let image as NSImage:
-                // A lone picture's PNG goes in as it is, rather than through a
-                // full-size TIFF; anything else is converted in the background.
-                let png = objects.count == 1 ? pasteboard.data(forType: .png) : nil
-                guard let data = png ?? image.tiffRepresentation else { continue }
+                // The picture's own data, converted in the background: making a
+                // full-size TIFF of it here would hold everything up (a photo
+                // takes a tenth of a second and tens of MB).
+                let own = ownItems ? Self.imageData(on: items[index]) : nil
+                let lone = objects.count == 1 ? pasteboard.data(forType: .png) : nil
+                guard let data = own ?? lone ?? image.tiffRepresentation else { continue }
                 runInBackground("image", step) { try $0.stash(imageData: data, into: shelf) }
             case let text as String:
                 run("text", step) { try $0.stash(text: text, into: shelf) }
@@ -109,6 +115,18 @@ final class StashDropper {
         return true
     }
 
+    private static let readableImageTypes = Set(CGImageSourceCopyTypeIdentifiers() as? [String] ?? [])
+
+    /// A picture's data as its pasteboard item holds it, PNG or TIFF first:
+    /// anything ImageIO can read.
+    private static func imageData(on item: NSPasteboardItem) -> Data? {
+        let types = [NSPasteboard.PasteboardType.png, .tiff] + item.types
+        return types.lazy
+            .filter { item.types.contains($0) && readableImageTypes.contains($0.rawValue) }
+            .compactMap { item.data(forType: $0) }
+            .first
+    }
+
     /// Each link's title, by its address: browsers put both on the link's own
     /// pasteboard item.
     private static func linkTitles(on pasteboard: NSPasteboard) -> [String: String] {
@@ -121,30 +139,42 @@ final class StashDropper {
         return titles
     }
 
-    /// Moves files in one by one, off the main thread, asking first about ones
-    /// over the limit in Settings.
+    /// Moves files in, off the main thread, after asking about any over the
+    /// limit in Settings; the shelf's manifest is written once for them all.
     private func stash(_ files: [URL], into shelf: URL, rememberOrigin: Bool, copying: Bool = false,
                        step: StashUndoHistory.Step) async {
         let mover = self.mover
+        var accepted: [URL] = []
+        // Sizes taken for asking, so moving from another disk needn't walk a folder again.
+        var measured: [URL: FileSize.Measurement] = [:]
         for file in files {
             if let limit = AppSettings.shared.largeFileLimit.bytes {
-                let size = await Task.detached { (try? FileSize.of(file)) ?? 0 }.value
-                if size > limit, !confirmLarge(file, size: size) {
-                    Log.info("Skipped \(file.lastPathComponent) (\(size) bytes): declined")
+                let size = await Task.detached { try? FileSize.measure(file) }.value
+                measured[file] = size
+                let bytes = size?.bytes ?? 0
+                if bytes > limit, !confirmLarge(file, size: bytes) {
+                    Log.info("Skipped \(file.lastPathComponent) (\(bytes) bytes): declined")
                     if !rememberOrigin { try? FileManager.default.removeItem(at: file) }
                     continue
                 }
             }
-            do {
-                let stashed = try await Task.detached {
-                    copying ? try mover.stashCopy(file, into: shelf) : try mover.stash(file, into: shelf, rememberOrigin: rememberOrigin)
-                }.value
+            accepted.append(file)
+        }
+        guard !accepted.isEmpty else { return }
+        let sources = accepted
+        let sizes = measured
+        let results = await Task.detached {
+            copying ? mover.stashCopies(sources, into: shelf) : mover.stash(sources, into: shelf, rememberOrigin: rememberOrigin, measured: sizes)
+        }.value
+        for (file, result) in zip(sources, results) {
+            switch result {
+            case .success(let stashed):
                 // A file from a folder goes back there on undo; a copy, or a file
                 // an app wrote somewhere temporary, goes to the Trash.
                 if stashed != file {
                     step.record(copying || !rememberOrigin ? .added(stashed) : .movedIn(stashed, from: file))
                 }
-            } catch {
+            case .failure(let error):
                 report("Couldn’t stash “\(file.lastPathComponent)”", error)
             }
         }
@@ -267,12 +297,10 @@ final class StashDropper {
         Log.info("Undo: \(present.count) of \(changes.count) \(changes.count == 1 ? "item" : "items") from the last drop")
         guard !present.isEmpty else { return false }
         let mover = self.mover
-        for change in present.reversed() {
-            do {
-                _ = try await Task.detached { try mover.undo(change) }.value
-            } catch {
-                report("Couldn’t undo “\(change.item.lastPathComponent)”", error)
-            }
+        let newestFirst = Array(present.reversed())
+        let results = await Task.detached { mover.undo(newestFirst) }.value
+        for (change, result) in zip(newestFirst, results) {
+            if case .failure(let error) = result { report("Couldn’t undo “\(change.item.lastPathComponent)”", error) }
         }
         return true
     }

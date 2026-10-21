@@ -19,7 +19,6 @@ final class StashPanelController: NSViewController {
     private let store: StashStore
     private let mover: FileMover
     private let dropper: StashDropper
-    private let thumbnails = ThumbnailLoader()
     private let preview = PreviewWindow()
     /// Shelf tabs and the + button, wrapping onto more rows when they don't fit.
     private let tabs = FlowView()
@@ -327,15 +326,14 @@ final class StashPanelController: NSViewController {
         step.expect()
         Task {
             defer { step.landed() }
-            for url in urls {
-                do {
-                    let moved = try await Task.detached { try mover.move(url, toShelf: destination) }.value
-                    step.record(.movedBetweenShelves(moved, from: url))
-                } catch {
-                    Alerts.showError("Couldn’t move “\(url.lastPathComponent)”", error)
+            let results = await Task.detached { mover.move(urls, toShelf: destination) }.value
+            for (url, result) in zip(urls, results) {
+                switch result {
+                case .success(let moved): step.record(.movedBetweenShelves(moved, from: url))
+                case .failure(let error): Alerts.showError("Couldn’t move “\(url.lastPathComponent)”", error)
                 }
             }
-            store.reload()
+            store.reload(around: urls + [destination])
         }
     }
 
@@ -402,7 +400,7 @@ final class StashPanelController: NSViewController {
         note("Undo")
         Task {
             if await dropper.undoLast() {
-                store.reload()
+                store.reload(around: nil)
             } else {
                 NSSound.beep()
             }
@@ -413,17 +411,17 @@ final class StashPanelController: NSViewController {
         guard let item = selectedItems.first else { return }
         note("Rename… \(item.name)")
         ItemActions.rename(item, with: mover)
-        store.reload()
+        store.reload(around: [item.url])
     }
 
     @objc private func putBackSelection() {
         note("Put Back \(count(selectedItems.count))")
-        perform("put back", selectedItems.filter { $0.origin != nil }.map(\.url)) { _ = try $0.putBack($1) }
+        perform("put back", selectedItems.filter { $0.origin != nil }.map(\.url)) { $0.putBack($1) }
     }
 
     @objc private func deleteSelection() {
         note("Move to Trash \(count(selectedItems.count))")
-        perform("move to the Trash", selectedItems.map(\.url)) { try $0.delete($1) }
+        perform("move to the Trash", selectedItems.map(\.url)) { $0.delete($1) }
     }
 
     private func note(_ message: String) {
@@ -434,19 +432,17 @@ final class StashPanelController: NSViewController {
         "\(n) \(n == 1 ? "item" : "items")"
     }
 
-    /// Runs a file operation on each item off the main thread, reporting failures.
-    private func perform(_ verb: String, _ urls: [URL], _ operation: @escaping @Sendable (FileMover, URL) throws -> Void) {
+    /// Runs a file operation on the items off the main thread, reporting failures.
+    private func perform<T: Sendable>(_ verb: String, _ urls: [URL],
+                                      _ operation: @escaping @Sendable (FileMover, [URL]) -> [Result<T, any Error>]) {
         guard !urls.isEmpty else { return }
         let mover = self.mover
         Task {
-            for url in urls {
-                do {
-                    try await Task.detached { try operation(mover, url) }.value
-                } catch {
-                    Alerts.showError("Couldn’t \(verb) “\(url.lastPathComponent)”", error)
-                }
+            let results = await Task.detached { operation(mover, urls) }.value
+            for (url, result) in zip(urls, results) {
+                if case .failure(let error) = result { Alerts.showError("Couldn’t \(verb) “\(url.lastPathComponent)”", error) }
             }
-            store.reload()
+            store.reload(around: urls)
         }
     }
 }
@@ -460,7 +456,7 @@ extension StashPanelController: NSCollectionViewDataSource, NSCollectionViewDele
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let cell = collectionView.makeItem(withIdentifier: StashItemCell.identifier, for: indexPath)
-        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: thumbnails,
+        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: .shared,
                                                 scale: collectionView.window?.backingScaleFactor ?? 2)
         return cell
     }
@@ -489,7 +485,7 @@ extension StashPanelController: NSCollectionViewDataSource, NSCollectionViewDele
         let kinds = indexPaths.sorted().map { "\(items[$0.item].kind)" }.joined(separator: ", ")
         note("dragging out \(count(indexPaths.count)) (\(kinds))")
         // Files only in iCloud start downloading now, so the copy lands sooner.
-        for indexPath in indexPaths where CloudStatus.state(of: items[indexPath.item].url) == .cloudOnly {
+        for indexPath in indexPaths where items[indexPath.item].cloud == .cloudOnly {
             try? CloudStatus.startDownloading(items[indexPath.item].url)
         }
     }

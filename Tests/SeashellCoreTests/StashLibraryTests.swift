@@ -113,11 +113,18 @@ struct StashLibraryTests {
         try mover.stash(text: "keep me", into: main.url)
         try FileManager.default.removeItem(at: stashed)  // moved out in Finder
 
-        #expect(library.vanishedEntries(in: main) == ["report.pdf"])
+        #expect(library.contents(of: main).vanished == ["report.pdf"])
         try library.forget(["report.pdf"], in: main)
         let manifest = ShelfManifest.read(in: main.url)
         #expect(manifest.order == ["keep me.txt"])
         #expect(manifest.origins.isEmpty)
+    }
+
+    @Test func hiddenItemsAreNotVanished() throws {
+        let main = Shelf(url: try folder.folder("Stash/Main"))
+        try folder.mover().stash(try folder.file("Downloads/.env"), into: main.url)
+        #expect(library.items(in: main).isEmpty, "hidden, so not shown")
+        #expect(library.contents(of: main).vanished.isEmpty, "but still there, so its entry stays")
     }
 
     @Test func createRenameDeleteShelf() throws {

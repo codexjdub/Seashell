@@ -22,19 +22,19 @@ public final class NotesStore {
 
     /// Re-reads the folder; only a real difference is published.
     public func reload() {
-        let newNotes = library.notes()
+        let (newNotes, vanished) = library.contents()
         if newNotes != notes { notes = newNotes }
-        forgetVanishedPins()
+        forgetVanishedPins(vanished)
     }
 
     public func startWatching() {
-        watcher = FolderWatcher(folder: library.folder) { [weak self] in self?.reload() }
+        watcher = FolderWatcher(folder: library.folder) { [weak self] _ in self?.reload() }
     }
 
     /// A pin whose note has stayed gone (deleted or renamed in Finder, say) is
     /// forgotten, so a later note of that name doesn't come back pinned.
-    private func forgetVanishedPins() {
-        let expired = vanishedPins.expired(among: library.vanishedPins()) { [weak self] in self?.reload() }
+    private func forgetVanishedPins(_ gone: Set<String>) {
+        let expired = vanishedPins.expired(among: gone) { [weak self] in self?.reload() }
         guard !expired.isEmpty else { return }
         do {
             try library.forgetPins(expired)

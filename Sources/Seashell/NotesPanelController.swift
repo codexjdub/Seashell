@@ -542,13 +542,14 @@ extension NotesPanelController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: NoteRowView.identifier, owner: nil) as? NoteRowView ?? NoteRowView()
-        let typed = editor.isBlank ? nil : NoteNaming.title(for: editor.text)
+        // The open note's (or new note's) row shows the title as typed so far.
+        func typed() -> String? { editor.isBlank ? nil : NoteNaming.title(for: editor.text) }
         switch rows[row] {
         case .draft:
-            cell.show(title: typed ?? "New Note", detail: "Not saved yet", pinned: false, windowed: false)
+            cell.show(title: typed() ?? "New Note", detail: "Not saved yet", pinned: false, windowed: false)
         case .note(let note):
             let isOpen = note.url.lastPathComponent == editor.note?.url.lastPathComponent
-            cell.show(title: isOpen ? (typed ?? note.title) : note.title,
+            cell.show(title: isOpen ? (typed() ?? note.title) : note.title,
                       detail: note.modified.formatted(date: .abbreviated, time: .shortened),
                       pinned: note.isPinned, windowed: windows.contains(note))
         }

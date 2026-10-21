@@ -56,6 +56,13 @@ public enum ShelfError: LocalizedError, Equatable {
     }
 }
 
+/// What a shelf holds, as `StashLibrary.contents(of:)` reads it.
+public struct ShelfContents: Equatable, Sendable {
+    public let items: [StashItem]
+    /// Names its manifest lists whose items are gone.
+    public let vanished: Set<String>
+}
+
 /// Reads and manages shelves on disk. The folders are the source of truth.
 public struct StashLibrary: Sendable {
     public let stash: URL
@@ -108,6 +115,13 @@ public struct StashLibrary: Sendable {
     /// first, newest first; then the manifest's order. A name the manifest lists
     /// twice shows once.
     public func items(in shelf: Shelf) -> [StashItem] {
+        contents(of: shelf).items
+    }
+
+    /// A shelf's items (see `items(in:)`), and the names its manifest still
+    /// lists although the item is gone (moved out or deleted in Finder, say),
+    /// from one look at the folder and its manifest.
+    public func contents(of shelf: Shelf) -> ShelfContents {
         let manifest = ShelfManifest.read(in: shelf.url)
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .addedToDirectoryDateKey, .contentModificationDateKey]
         let urls = contents(of: shelf.url, keys: keys)
@@ -117,7 +131,7 @@ public struct StashLibrary: Sendable {
         let unlisted = urls
             .filter { !seen.contains($0.lastPathComponent) }
             .sorted { dateAdded($0) > dateAdded($1) }
-        return (unlisted + listed).map { url in
+        let items = (unlisted + listed).map { url in
             let values = try? url.resourceValues(forKeys: keys)
             return StashItem(url: url,
                              kind: StashItem.kind(of: url, isDirectory: values?.isDirectory == true, isPackage: values?.isPackage == true),
@@ -126,15 +140,11 @@ public struct StashLibrary: Sendable {
                              added: values?.addedToDirectoryDate,
                              cloud: CloudStatus.state(of: url))
         }
-    }
-
-    /// Names the shelf's manifest still lists although the item is gone, e.g.
-    /// moved out or deleted in Finder.
-    public func vanishedEntries(in shelf: Shelf) -> Set<String> {
-        let manifest = ShelfManifest.read(in: shelf.url)
-        return Set(manifest.order).union(manifest.origins.keys).filter { name in
-            !FileManager.default.fileExists(atPath: shelf.url.appending(path: name).path(percentEncoded: false))
+        // Not in the listing; hidden files aren't listed, so those are checked.
+        let vanished = Set(manifest.order).union(manifest.origins.keys).filter { name in
+            byName[name] == nil && !FileManager.default.fileExists(atPath: shelf.url.appending(path: name).path(percentEncoded: false))
         }
+        return ShelfContents(items: items, vanished: vanished)
     }
 
     /// Drops manifest entries, so a different item later given the same name

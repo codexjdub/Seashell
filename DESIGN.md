@@ -84,8 +84,8 @@ Rules:
 - Promised files arrive in `$TMPDIR/Seashell-Incoming/<id>/`, which is removed once the file has moved into a shelf (or couldn't); anything left there is cleared at launch.
 - A promised file (Photos, Mail, pictures from web pages) goes into the shelf only once it has content that has stopped growing for half a second. Chrome and other Chromium browsers use an older promise that reports the file before writing it. If it's still empty after 15 s, Seashell downloads the picture from the web address the drag carried (if that's really a picture), or else saves the picture data the drag carried as a PNG; failing both, it says so. An empty file is never stashed.
 - In the panel, every item takes one tile. Text shows as a note card with its first lines (up to five at 13 pt), on the faint note yellow and a link as a neutral card with a blue link symbol, its title and site (a blue card would look selected); hovering shows the full text or address. Files and folders show thumbnails.
-- Text and link tiles read their words or address in the background (file coordination can wait on iCloud) and cache them per modification date; an item edited in place, or one iCloud finishes downloading, counts as changed, so its tile redraws.
-- A lone pasted or dropped picture that's already PNG goes in as it is; other pictures are converted to PNG in the background.
+- Tiles read their thumbnails, words or addresses in the background (file coordination can wait on iCloud) and cache them per modification date and whether the item is on this Mac yet, in one cache shared by the panel, the grab shelf and tear-off shelves. An item edited in place, or one iCloud finishes downloading, counts as changed, so its tile redraws with what it now shows. A tile asked for again while its thumbnail is still being made (the grid reloading as a drop lands) waits for that one rather than starting another.
+- A pasted or dropped picture that's already PNG goes in as it is; others are converted to PNG in the background from the data they came with (a photo stored on its side comes out upright), rather than first being made into a full-size TIFF, which holds everything up for a tenth of a second per photo.
 - Text (`.txt` up to 1 MB) and links (`.webloc`) drag out as their content — the words or the address — so they drop into text fields and browsers. Finder still gets the file: it's a file promise that Seashell writes on drop.
 - Any file or folder over the limit in Settings (1 GB by default) going into Stash asks first — everything in Stash uploads to iCloud and counts against its storage.
 - Moving into Stash from another volume is copy → verify → delete the original, like Finder.
@@ -136,9 +136,9 @@ Sources/
   SeashellCore/           ← no UI, unit-tested
     SeashellFolders       where things live; creates missing folders
     StashLibrary          shelves and items on disk; shelf order
-    StashStore            the live view of Stash for the UI
+    StashStore            the live view of Stash for the UI; re-reads changed shelves in the background
     ShelfManifest         a shelf's .seashell.json: item order, Put Back origins
-    FileMover             in (same-volume rename; cross-volume copy/verify/delete), between shelves, back out, to the Trash; rename; undo
+    FileMover             in (same-volume rename; cross-volume copy/verify/delete), between shelves, back out, to the Trash; rename; undo; batches write each manifest once
     StashUndo             what ⌘Z takes back: each drop's changes, the last 20 steps; drops still landing
     VanishedEntries       manifest entries whose items have gone, forgotten after a grace (Stash items, pins)
     SecretCode            a short code typed on the keyboard (the easter egg's 1 1 1 Return)
@@ -148,7 +148,7 @@ Sources/
     NoteSession           the note being edited: saving, "(edited here)" copies, following the folder
     Checklist             to-do lines in notes: finding, ticking, ⇧⌘L
     NoteLines             line-by-line note edits; MarkdownList: Return in lists, Tab and ⇧Tab
-    FolderWatcher         FSEvents on the Seashell folder
+    FolderWatcher         FSEvents on the Seashell folder, with which folders changed
     Coordinated           NSFileCoordinator wrappers, so iCloud sees orderly writes
     PromisedFile          waits for a promised file to be written
     ItemContent           a text or link item's content, for dragging it out
@@ -219,6 +219,9 @@ Keep it lean: every global monitor wakes Seashell for each matching event anywhe
 - Scrolls are watched only while pull down is on or the panel is open (pushing up closes it).
 - Drags are watched on press and drag only; checking the drag pasteboard costs under a microsecond.
 - Shake Off stops the ⌥-shake watcher; the drag watcher stays for holding a drag at the top edge.
+- Stash follows the folder shelf by shelf: a change re-reads only the shelves it touched, in the background, since reading a shelf asks iCloud about each item (about 0.75 ms each, measured 2026-10-21) and reads its manifest through file coordination (about 1.6 ms). When macOS can't say what changed, all of Stash is read. Adding, renaming, deleting or reordering shelves reads all of it at once, since what follows needs the new shelves.
+- Trashing, putting back, moving or stashing several items, and ⌘Z on a drop of several, write each shelf's manifest once rather than once per item: every write is another upload to each Mac.
+- A note's title comes from its first filled line, read only that far (it runs on every key; splitting a 300 KB note took 50 ms). Reloading Notes reads its manifest once, for the pins and for the pins whose notes have gone.
 
 Measured 2026-10-18: 2.6 MB on disk; 17 MB of memory at launch, 47 MB once the panel has opened (kept for an instant reopen); 0% CPU and no wakeups when idle; 0% while the mouse moves without ⌥ (it was 2–12% before).
 

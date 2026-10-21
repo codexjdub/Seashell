@@ -24,6 +24,11 @@ struct NoteNamingTests {
         #expect(!title.isEmpty && title.allSatisfy { $0 == Character(family) }, "cut between emoji, not inside one")
     }
 
+    @Test func onlyTheFirstFilledLineCounts() {
+        #expect(NoteNaming.title(for: "\r\n  \r\nTrip\r\nday 1") == "Trip")
+        #expect(NoteNaming.title(for: "Trip") == "Trip", "a single line with no break")
+    }
+
     @Test func emptyIsUntitled() {
         #expect(NoteNaming.title(for: " \n\t") == "Untitled")
         #expect(NoteNaming.title(for: "###") == "Untitled")
@@ -172,6 +177,24 @@ struct NotesLibraryTests {
         #expect(throws: ShelfManifestError.unreadable("Notes")) { try library.setPinned(note, true) }
         #expect(try text(manifest) == "{ not json")
         #expect(library.notes().map(\.title) == ["Groceries"])
+    }
+
+    @Test func pinsOfNotesGoneAreFoundWithTheList() throws {
+        let kept = try library.create(text: "Kept")
+        let gone = try library.create(text: "Gone")
+        try library.setPinned(kept, true)
+        try library.setPinned(gone, true)
+        try FileManager.default.removeItem(at: gone.url)
+        let contents = library.contents()
+        #expect(contents.notes.map(\.title) == ["Kept"])
+        #expect(contents.vanishedPins == ["Gone.md"])
+    }
+
+    @Test func savingKeepsThePin() throws {
+        let note = try library.create(text: "Groceries")
+        try library.setPinned(note, true)
+        let pinned = try #require(library.note(at: note.url))
+        #expect(try library.save("Groceries\nmilk", to: pinned).note.isPinned)
     }
 
     @MainActor @Test func pinsOfNotesGoneElsewhereAreForgottenAfterAWhile() async throws {

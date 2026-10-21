@@ -96,7 +96,6 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
     var onDraggedOut: ((NSPoint) -> Void)?
 
     private let store: StashStore
-    private let thumbnails = ThumbnailLoader()
     private var items: [StashItem] = []
     private let grid = StashGridView()
     private let layout = NSCollectionViewFlowLayout()
@@ -230,7 +229,7 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let cell = collectionView.makeItem(withIdentifier: StashItemCell.identifier, for: indexPath)
-        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: thumbnails,
+        (cell as? StashItemCell)?.configure(with: items[indexPath.item], thumbnails: .shared,
                                                 scale: collectionView.window?.backingScaleFactor ?? 2)
         return cell
     }
@@ -248,7 +247,7 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
         isDragging = true
         let names = indexPaths.sorted().map { items[$0.item].name }.joined(separator: ", ")
         Log.info("Grab shelf: dragging out \(names)")
-        for indexPath in indexPaths where CloudStatus.state(of: items[indexPath.item].url) == .cloudOnly {
+        for indexPath in indexPaths where items[indexPath.item].cloud == .cloudOnly {
             try? CloudStatus.startDownloading(items[indexPath.item].url)
         }
     }

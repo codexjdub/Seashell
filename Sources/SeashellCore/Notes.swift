@@ -17,11 +17,13 @@ public enum NoteNaming {
     public static let maxTitleLength = 60
 
     /// A note's title: its first non-empty line, without Markdown heading marks
-    /// or a to-do's `- [ ]`.
+    /// or a to-do's `- [ ]`. Reads only as far as that line: it runs as you type.
     public static func title(for text: String) -> String {
-        let firstLine = text.split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .first { !$0.isEmpty } ?? ""
+        var firstLine = ""
+        text.enumerateLines { line, stop in
+            firstLine = line.trimmingCharacters(in: .whitespaces)
+            stop = !firstLine.isEmpty
+        }
         var title = Checklist.withoutMarker(firstLine)
         while title.hasPrefix("#") { title.removeFirst() }
         title = FileNaming.sanitized(title)
@@ -58,15 +60,30 @@ public struct NotesLibrary: Sendable {
 
     /// Markdown files: pinned ones first, then most recently edited first.
     public func notes() -> [Note] {
+        contents().notes
+    }
+
+    /// The notes (see `notes()`), and the pinned names whose note is gone (deleted
+    /// or renamed in Finder, say), from one look at the folder and its manifest.
+    public func contents() -> (notes: [Note], vanishedPins: Set<String>) {
+        // Fresh URLs, so the dates they bring along are current.
         let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey],
                                                                   options: [.skipsHiddenFiles])) ?? []
-        let pinned = Set(NotesManifest.read(in: folder).pinned)
-        return urls
+        let pinned = NotesManifest.read(in: folder).pinned
+        let pins = Set(pinned)
+        let notes = urls
             .filter { $0.pathExtension.lowercased() == "md" }
             .compactMap { url in
-                Self.modified(url).map { Note(url: url, modified: $0, isPinned: pinned.contains(url.lastPathComponent)) }
+                (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate).map {
+                    Note(url: url, modified: $0, isPinned: pins.contains(url.lastPathComponent))
+                }
             }
             .sorted { ($0.isPinned ? 1 : 0, $0.modified) > ($1.isPinned ? 1 : 0, $1.modified) }
+        let listed = Set(urls.map(\.lastPathComponent))
+        let vanished = pinned.filter { name in
+            !listed.contains(name) && !FileManager.default.fileExists(atPath: folder.appending(path: name).path(percentEncoded: false))
+        }
+        return (notes, Set(vanished))
     }
 
     public func note(at url: URL) -> Note? {
@@ -83,13 +100,6 @@ public struct NotesLibrary: Sendable {
             if pinned { manifest.pinned.append(name) }
         }
         Log.info("\(pinned ? "Pinned" : "Unpinned") note \(note.title)")
-    }
-
-    /// Pinned names whose note is gone, e.g. deleted or renamed in Finder.
-    public func vanishedPins() -> Set<String> {
-        Set(NotesManifest.read(in: folder).pinned.filter { name in
-            !FileManager.default.fileExists(atPath: folder.appending(path: name).path(percentEncoded: false))
-        })
     }
 
     /// Drops those pins.
@@ -121,7 +131,9 @@ public struct NotesLibrary: Sendable {
             return .savedAsCopy(try existing(url))
         }
         try write(text, to: note.url)
-        return .saved(try existing(note.url))
+        // Same file, so still pinned or not: no need to read the pins again.
+        guard let modified = Self.modified(note.url) else { throw CocoaError(.fileNoSuchFile) }
+        return .saved(Note(url: note.url, modified: modified, isPinned: note.isPinned))
     }
 
     /// Renames the note to match its first line, and returns it as it is afterwards.

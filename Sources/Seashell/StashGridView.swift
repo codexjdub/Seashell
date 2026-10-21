@@ -332,70 +332,98 @@ final class CardView: NSView {
 
 /// What tiles show that has to be read from disk: Quick Look thumbnails, and
 /// the text or address of text and link items. Loaded in the background and
-/// cached per file and modification date (thumbnails per size and scale too).
+/// cached per file, modification date and whether it's on this Mac yet
+/// (thumbnails per size and scale too). One for every grid: the panel, the grab
+/// shelf and tear-offs show the same items.
 @MainActor
 final class ThumbnailLoader {
-    private let cache = NSCache<NSString, NSImage>()
-    private let texts = NSCache<NSString, NSString>()
-    private let links = NSCache<NSString, NSURL>()
+    static let shared = ThumbnailLoader()
+
+    private let thumbnails = Loads<NSImage>()
+    private let texts = Loads<NSString>()
+    private let links = Loads<NSURL>()
 
     func cachedText(for item: StashItem) -> String? {
-        texts.object(forKey: key(for: item) as NSString) as String?
+        texts.cached(key(for: item)) as String?
     }
 
     /// Nil if it can't be read (too big, not text, or only in iCloud).
     func loadText(_ item: StashItem, completion: @escaping @MainActor (String?) -> Void) {
-        let key = key(for: item)
-        if texts.object(forKey: key as NSString) != nil { return }
         let url = item.url
-        Task { [weak self] in
-            let preview = await Task.detached { ItemContent.preview(of: url, maxCharacters: 1000) }.value
-            if let preview { self?.texts.setObject(preview as NSString, forKey: key as NSString) }
-            completion(preview)
+        texts.load(key(for: item), completion: { completion($0 as String?) }) {
+            await Task.detached { ItemContent.preview(of: url, maxCharacters: 1000) }.value.map { $0 as NSString }
         }
     }
 
     func cachedLink(for item: StashItem) -> URL? {
-        links.object(forKey: key(for: item) as NSString) as URL?
+        links.cached(key(for: item)) as URL?
     }
 
     func loadLink(_ item: StashItem, completion: @escaping @MainActor (URL?) -> Void) {
-        let key = key(for: item)
-        if links.object(forKey: key as NSString) != nil { return }
         let url = item.url
-        Task { [weak self] in
-            let link = await Task.detached { ItemContent.link(of: url) }.value
-            if let link { self?.links.setObject(link as NSURL, forKey: key as NSString) }
-            completion(link)
+        links.load(key(for: item), completion: { completion($0 as URL?) }) {
+            await Task.detached { ItemContent.link(of: url) }.value.map { $0 as NSURL }
         }
     }
 
+    /// A download doesn't change the modification date, but what Quick Look
+    /// can show for it does.
     private func key(for item: StashItem) -> String {
-        "\(item.url.path(percentEncoded: false))|\(item.modified?.timeIntervalSince1970 ?? 0)"
+        let here = item.cloud == .local || item.cloud == .downloaded
+        return "\(item.url.path(percentEncoded: false))|\(item.modified?.timeIntervalSince1970 ?? 0)|\(here ? "here" : "cloud")"
     }
 
     func cached(for item: StashItem, size: CGFloat, scale: CGFloat) -> NSImage? {
-        cache.object(forKey: thumbnailKey(for: item, size: size, scale: scale) as NSString)
+        thumbnails.cached(thumbnailKey(for: item, size: size, scale: scale))
     }
 
+    /// Calls `completion` only with a thumbnail, never for one that failed.
     func load(_ item: StashItem, size: CGFloat, scale: CGFloat, completion: @escaping @MainActor (NSImage) -> Void) {
-        let key = thumbnailKey(for: item, size: size, scale: scale)
-        if cache.object(forKey: key as NSString) != nil { return }
         let request = QLThumbnailGenerator.Request(fileAt: item.url, size: CGSize(width: size, height: size),
                                                    scale: scale, representationTypes: .all)
-        // Called on a background queue; @Sendable keeps Swift from treating it as main-thread-only.
-        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { @Sendable [weak self] representation, _ in
-            guard let cgImage = representation?.cgImage else { return }
-            let image = NSImage(cgImage: cgImage, size: NSSize(width: size, height: size))
-            Task { @MainActor in
-                self?.cache.setObject(image, forKey: key as NSString)
-                completion(image)
+        thumbnails.load(thumbnailKey(for: item, size: size, scale: scale), completion: { $0.map(completion) }) {
+            let image = await withCheckedContinuation { continuation in
+                // Called on a background queue; @Sendable keeps Swift from treating it as main-thread-only.
+                QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { @Sendable representation, _ in
+                    continuation.resume(returning: representation?.cgImage)
+                }
             }
+            return image.map { NSImage(cgImage: $0, size: NSSize(width: size, height: size)) }
         }
     }
 
     /// A thumbnail made for one icon size or screen doesn't do for another.
     private func thumbnailKey(for item: StashItem, size: CGFloat, scale: CGFloat) -> String {
         "\(key(for: item))|\(size)@\(scale)x"
+    }
+}
+
+/// Cached values, and the loads still on their way: asked again for one that's
+/// coming (a grid reloading while thumbnails are made), it waits for that load
+/// instead of starting another.
+@MainActor
+private final class Loads<Value: AnyObject> {
+    private let cache = NSCache<NSString, Value>()
+    private var waiting: [String: [@MainActor (Value?) -> Void]] = [:]
+
+    func cached(_ key: String) -> Value? {
+        cache.object(forKey: key as NSString)
+    }
+
+    /// Calls `completion` with what `load` brings (nil if it couldn't), unless
+    /// it's cached already.
+    func load(_ key: String, completion: @escaping @MainActor (Value?) -> Void,
+              _ load: @escaping @MainActor () async -> Value?) {
+        guard cached(key) == nil else { return }
+        guard waiting[key] == nil else {
+            waiting[key]?.append(completion)
+            return
+        }
+        waiting[key] = [completion]
+        Task {
+            let value = await load()
+            if let value { cache.setObject(value, forKey: key as NSString) }
+            waiting.removeValue(forKey: key)?.forEach { $0(value) }
+        }
     }
 }

@@ -16,11 +16,11 @@ enum DragOut {
     static func writer(for item: StashItem) -> any NSPasteboardWriting {
         switch item.kind {
         case .text:
-            if let text = ItemContent.text(of: item.url) {
+            if let text = ItemContent.text(of: item) {
                 return promise(for: item.url, type: .plainText, content: [.string: text])
             }
         case .link:
-            if let link = ItemContent.link(of: item.url) {
+            if let link = ItemContent.link(of: item) {
                 let title = item.url.deletingPathExtension().lastPathComponent
                 return promise(for: item.url, type: .internetLocation,
                                content: [.URL: link.absoluteString, .string: link.absoluteString, urlNameType: title])
