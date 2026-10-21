@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import Testing
 @testable import SeashellCore
 
@@ -30,6 +31,16 @@ struct TextRecognitionTests {
         #expect(text.contains("Invoice 4417") && text.contains("Total due 86.50"))
     }
 
+    @Test func readsEveryPageOfAMultiPageTIFF() async throws {
+        let url = folder.root.appending(path: "fax.tiff")
+        let destination = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.tiff.identifier as CFString, 2, nil))
+        for page in [Self.words("Page one says hello"), Self.words("Page two says goodbye")] {
+            CGImageDestinationAddImage(destination, try #require(page), nil)
+        }
+        #expect(CGImageDestinationFinalize(destination))
+        #expect(try await TextRecognition.text(of: url) == "Page one says hello\n\nPage two says goodbye")
+    }
+
     @Test func aPictureWithoutWordsSaysSo() async throws {
         let blank = try save(Self.words(), as: "blank.png")
         await #expect(throws: TextRecognitionError.noText("blank.png")) { try await TextRecognition.text(of: blank) }
@@ -45,6 +56,8 @@ struct TextRecognitionTests {
             StashItem(url: folder.root.appending(path: name), kind: kind, origin: nil, modified: nil, added: nil, cloud: .local)
         }
         #expect(TextRecognition.canRead(item("photo.HEIC")))
+        #expect(TextRecognition.canRead(item("raw.CR2")))
+        #expect(!TextRecognition.canRead(item("logo.svg")), "a picture, but not one macOS can open to read")
         #expect(TextRecognition.canRead(item("shot.png")))
         #expect(TextRecognition.canRead(item("form.pdf")))
         #expect(!TextRecognition.canRead(item("note.txt", .text)))

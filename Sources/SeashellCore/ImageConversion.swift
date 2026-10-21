@@ -19,17 +19,17 @@ enum ImageConversion {
         return output as Data
     }
 
-    /// The first image, turned as its orientation says, at full size.
-    static func upright(_ source: CGImageSource) -> CGImage? {
-        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    /// An image (the first unless `index` says), turned as its orientation says, at full size.
+    static func upright(_ source: CGImageSource, index: Int = 0) -> CGImage? {
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
         let orientation = properties?[kCGImagePropertyOrientation] as? Int ?? 1
         guard orientation != 1,
               let width = properties?[kCGImagePropertyPixelWidth] as? Int,
               let height = properties?[kCGImagePropertyPixelHeight] as? Int
-        else { return CGImageSourceCreateImageAtIndex(source, 0, nil) }
+        else { return CGImageSourceCreateImageAtIndex(source, index, nil) }
         let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                         kCGImageSourceCreateThumbnailWithTransform: true,
                                         kCGImageSourceThumbnailMaxPixelSize: max(width, height)]
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        return CGImageSourceCreateThumbnailAtIndex(source, index, options as CFDictionary)
     }
 }
