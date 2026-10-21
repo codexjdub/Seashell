@@ -26,6 +26,49 @@ enum ItemActions {
         Log.info("Copied \(items.count) item\(items.count == 1 ? "" : "s") to the clipboard")
     }
 
+    /// Set once Copy Text has been used on this Mac: from then on its model is
+    /// set up after each launch (see AppDelegate).
+    static let copyTextUsedKey = "copyTextUsed"
+
+    /// Copy Text: the words in the pictures and PDFs among `items`, read on this
+    /// Mac in the background, onto the clipboard (several with a blank line
+    /// between). Says so if there's no text, or if an item is only in iCloud
+    /// (it starts downloading, to try again in a moment).
+    static func copyText(_ items: [StashItem]) {
+        let readable = items.filter(TextRecognition.canRead)
+        guard !readable.isEmpty else { return }
+        UserDefaults.standard.set(true, forKey: copyTextUsedKey)
+        let inICloud = readable.filter { $0.cloud == .cloudOnly }
+        guard inICloud.isEmpty else {
+            inICloud.forEach { try? CloudStatus.startDownloading($0.url) }
+            Log.info("Copy Text: \(inICloud.count) item(s) only in iCloud, downloading")
+            Alerts.tell(inICloud.count == 1 ? "“\(inICloud[0].name)” is only in iCloud" : "\(inICloud.count) items are only in iCloud",
+                        detail: "It’s downloading to this Mac now. Try Copy Text again in a moment.")
+            return
+        }
+        Log.info("Copy Text from \(readable.count) item\(readable.count == 1 ? "" : "s")")
+        Task {
+            var texts: [String] = []
+            var failure: (any Error)?
+            for item in readable {
+                let url = item.url
+                do {
+                    texts.append(try await Task.detached { try await TextRecognition.text(of: url) }.value)
+                } catch {
+                    Log.info("Copy Text: \(error.localizedDescription)")
+                    failure = failure ?? error
+                }
+            }
+            guard !texts.isEmpty else {
+                if let failure { Alerts.showError("Couldn’t copy any text", failure) }
+                return
+            }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(texts.joined(separator: "\n\n"), forType: .string)
+            Log.info("Copy Text: copied \(texts.joined().count) characters")
+        }
+    }
+
     /// Whether the clipboard holds something a shelf can take.
     static var canPaste: Bool {
         NSPasteboard.general.canReadObject(forClasses: [NSURL.self, NSImage.self, NSString.self], options: nil)

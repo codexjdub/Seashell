@@ -20,7 +20,7 @@ enum ImageConversion {
     }
 
     /// The first image, turned as its orientation says, at full size.
-    private static func upright(_ source: CGImageSource) -> CGImage? {
+    static func upright(_ source: CGImageSource) -> CGImage? {
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         let orientation = properties?[kCGImagePropertyOrientation] as? Int ?? 1
         guard orientation != 1,

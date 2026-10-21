@@ -116,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.onOpenChanged = updateScrollWatching
         observeChanges(updateScrollWatching)
         tipsWindow.showIfFirstLaunch()
+        if UserDefaults.standard.bool(forKey: ItemActions.copyTextUsedKey) { Self.warmUpTextRecognition() }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -129,6 +130,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func bringForwardApp(at point: NSPoint) {
         guard let target = PanelController.app(at: point), target != NSRunningApplication.current else { return }
         target.activate()
+    }
+
+    /// Copy Text's model takes about 30 s to set up the first time a new build
+    /// uses it. Once Copy Text has been used here, a helper (Seashell itself,
+    /// started to do just that) sets it up a minute after launch and quits, so
+    /// it's quick when wanted and Seashell doesn't hold the model in memory.
+    /// Already set up, the helper is done in about a tenth of a second.
+    private static func warmUpTextRecognition() {
+        Task {
+            try? await Task.sleep(for: .seconds(60))
+            guard let executable = Bundle.main.executableURL else { return }
+            let helper = Process()
+            helper.executableURL = executable
+            helper.arguments = [TextRecognition.warmUpArgument]
+            helper.qualityOfService = .background
+            let started = ContinuousClock.now
+            helper.terminationHandler = { _ in
+                let took = (ContinuousClock.now - started).formatted(.units(allowed: [.seconds], fractionalPart: .show(length: 1)))
+                Log.info("Copy Text: model ready (helper took \(took))")
+            }
+            do {
+                try helper.run()
+            } catch {
+                Log.error("Copy Text: couldn’t start the helper: \(error.localizedDescription)")
+            }
+        }
     }
 
     private static func summary(of store: StashStore) -> String {

@@ -358,6 +358,7 @@ final class StashPanelController: NSViewController {
         add("Show in Finder", #selector(showSelectionInFinder))
         menu.addItem(.separator())
         add("Copy", #selector(copySelection))
+        if selection.contains(where: TextRecognition.canRead) { add("Copy Text", #selector(copyTextFromSelection)) }
         add("Paste", #selector(pasteFromMenu), enabled: ItemActions.canPaste)
         add("Rename…", #selector(renameSelection), enabled: selection.count == 1)
         menu.addItem(.separator())
@@ -383,6 +384,11 @@ final class StashPanelController: NSViewController {
     @objc private func copySelection() {
         note("Copy \(count(selectedItems.count))")
         ItemActions.copy(selectedItems)
+    }
+
+    @objc private func copyTextFromSelection() {
+        note("Copy Text \(count(selectedItems.count))")
+        ItemActions.copyText(selectedItems)
     }
 
     @objc private func pasteFromMenu() {

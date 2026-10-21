@@ -303,6 +303,7 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
         add("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(selection.map(\.url)) }
         menu.addItem(.separator())
         add("Copy") { ItemActions.copy(selection) }
+        if selection.contains(where: TextRecognition.canRead) { add("Copy Text") { ItemActions.copyText(selection) } }
         add("Paste", enabled: ItemActions.canPaste) { [weak self] in self?.paste() }
         add("Rename…", enabled: selection.count == 1) { [weak self] in
             guard let self, let item = selection.first else { return }
