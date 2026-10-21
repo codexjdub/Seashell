@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import UniformTypeIdentifiers
 import Testing
 @testable import SeashellCore
@@ -29,6 +30,29 @@ struct TextRecognitionTests {
         }
         let text = try await TextRecognition.text(of: pdf)
         #expect(text.contains("Invoice 4417") && text.contains("Total due 86.50"))
+    }
+
+    @Test func readsAScanUnderAStampedPageNumber() async throws {
+        // A scan whose only text layer is a page number stamped on it.
+        let scan = try #require(Self.words("Invoice 4417", "Total due 86.50"))
+        let pdf = folder.root.appending(path: "stamped.pdf")
+        try Self.pdf(at: pdf) { context, box in
+            context.draw(scan, in: CGRect(x: 20, y: box.height - 300, width: CGFloat(scan.width) / 2, height: CGFloat(scan.height) / 2))
+            ("Page 1 of 3" as NSString).draw(at: NSPoint(x: 260, y: 30), withAttributes: [.font: NSFont.systemFont(ofSize: 10)])
+        }
+        let text = try await TextRecognition.text(of: pdf)
+        #expect(text.contains("Invoice 4417") && text.contains("Total due 86.50"))
+    }
+
+    @Test func aLockedPDFSaysSo() async throws {
+        let plain = folder.root.appending(path: "plain.pdf")
+        try Self.pdf(at: plain) { _, box in
+            ("Account 12345" as NSString).draw(at: NSPoint(x: 40, y: box.height - 80), withAttributes: [.font: NSFont.systemFont(ofSize: 18)])
+        }
+        let locked = folder.root.appending(path: "statement.pdf")
+        let document = try #require(PDFDocument(url: plain))
+        #expect(document.write(to: locked, withOptions: [.userPasswordOption: "secret", .ownerPasswordOption: "owner"]))
+        await #expect(throws: TextRecognitionError.locked("statement.pdf")) { try await TextRecognition.text(of: locked) }
     }
 
     @Test func readsEveryPageOfAMultiPageTIFF() async throws {

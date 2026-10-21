@@ -7,28 +7,28 @@ import Vision
 public enum TextRecognitionError: LocalizedError, Equatable {
     case noText(String)
     case unreadable(String)
+    case locked(String)
 
     public var errorDescription: String? {
         switch self {
         case .noText(let name): "Seashell found no text in “\(name)”."
         case .unreadable(let name): "“\(name)” couldn’t be opened as a picture or PDF."
+        case .locked(let name): "“\(name)” is locked with a password. Open it in Preview to read it."
         }
     }
 }
 
 /// Copy Text: the words in a picture or a PDF, read on this Mac. A PDF page
 /// with a text layer is read as it is; pictures, and pages that are only
-/// scans, go through Vision's text recognition (about a tenth of a second a
-/// picture).
+/// scans (or carry just a few words of text, such as a stamped page number),
+/// go through Vision's text recognition (about a tenth of a second a picture).
 public enum TextRecognition {
     /// PDFs, and pictures in a format macOS can open (not SVG, say, which
     /// counts as a picture but isn't one ImageIO reads).
     public static func canRead(_ item: StashItem) -> Bool {
         guard item.kind == .file, let type = UTType(filenameExtension: item.url.pathExtension) else { return false }
-        return type.conforms(to: .pdf) || pictureTypes.contains(type.identifier)
+        return type.conforms(to: .pdf) || ImageConversion.readableTypes.contains(type.identifier)
     }
-
-    private static let pictureTypes = Set(CGImageSourceCopyTypeIdentifiers() as? [String] ?? [])
 
     /// The text, a picture's lines top to bottom, a PDF's (or multi-page TIFF's)
     /// pages one after another.
@@ -38,6 +38,8 @@ public enum TextRecognition {
         let pages: [String]
         if UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) == true {
             guard let document = PDFDocument(data: data) else { throw TextRecognitionError.unreadable(name) }
+            // Its pages would only show blank.
+            guard !document.isLocked else { throw TextRecognitionError.locked(name) }
             pages = try await text(of: document)
         } else {
             guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { throw TextRecognitionError.unreadable(name) }
@@ -45,10 +47,13 @@ public enum TextRecognition {
             // the same picture again (icon sizes, animation frames), so only the first counts.
             let isTIFF = CGImageSourceGetType(source).map { UTType($0 as String)?.conforms(to: .tiff) == true } ?? false
             let count = isTIFF ? CGImageSourceGetCount(source) : min(CGImageSourceGetCount(source), 1)
-            let images = (0..<count).compactMap { ImageConversion.upright(source, index: $0) }
-            guard !images.isEmpty else { throw TextRecognitionError.unreadable(name) }
+            // One page at a time, each let go before the next (see the PDF's pages).
             var texts: [String] = []
-            for image in images { texts.append(try await recognize(image)) }
+            for index in 0..<count {
+                guard let image = autoreleasepool(invoking: { ImageConversion.upright(source, index: index) }) else { continue }
+                texts.append(try await recognize(image))
+            }
+            guard !texts.isEmpty else { throw TextRecognitionError.unreadable(name) }
             pages = texts
         }
         let text = pages.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: "\n\n")
@@ -56,15 +61,26 @@ public enum TextRecognition {
         return text
     }
 
+    /// A text layer shorter than this may be only a stamp on a scan (a page
+    /// number, a fax header), so the page is read as a picture too; what that
+    /// finds is used if it's more than twice as long (the stamp and the page's
+    /// words), else the text layer, which is exact.
+    static let shortTextLayer = 100
+
     private static func text(of document: PDFDocument) async throws -> [String] {
         var pages: [String] = []
         for index in 0..<document.pageCount {
             guard let page = document.page(at: index) else { continue }
-            if let text = page.string, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                pages.append(text)
-            } else if let image = picture(of: page) {
-                pages.append(try await recognize(image))
+            let layer = page.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard layer.count < shortTextLayer else {
+                pages.append(layer)
+                continue
             }
+            // Drained page by page: otherwise every page's picture stays in
+            // memory until the whole PDF is read (hundreds of MB for a long scan).
+            var seen = ""
+            if let image = autoreleasepool(invoking: { picture(of: page) }) { seen = try await recognize(image) }
+            pages.append(seen.count > layer.count * 2 ? seen : layer)
         }
         return pages
     }

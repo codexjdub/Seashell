@@ -2,7 +2,10 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-enum ImageConversion {
+public enum ImageConversion {
+    /// The picture formats macOS can open (not SVG, say), as type identifiers.
+    public static let readableTypes = Set(CGImageSourceCopyTypeIdentifiers() as? [String] ?? [])
+
     /// PNG data for any image format ImageIO can read. PNG input is returned as
     /// is. A photo stored on its side (its EXIF orientation) comes out upright.
     static func png(from data: Data) throws -> Data {

@@ -116,7 +116,7 @@ struct StashUndoTests {
             landing.record(.added(URL(filePath: "/big.mov")))
             landing.landed()
         }
-        await step?.untilLanded()
+        #expect(await step?.untilLanded(within: .seconds(10)) == true)
         #expect(step?.changes == [.added(URL(filePath: "/big.mov"))])
         #expect(history.popLatest()?.changes == [.added(URL(filePath: "/earlier.txt"))], "still there for the next ⌘Z")
     }
@@ -131,7 +131,32 @@ struct StashUndoTests {
         #expect(!step.isLanding)
         step.landed()  // one too many does no harm
         #expect(!step.isLanding)
-        await step.untilLanded()  // returns at once
+        #expect(await step.untilLanded(within: .seconds(10)))  // returns at once
+    }
+
+    @MainActor @Test func waitingForADropThatNeverLandsGivesUp() async {
+        let step = StashUndoHistory().begin()
+        step.expect()  // a promised file its app never hands over
+        #expect(await step.untilLanded(within: .milliseconds(50)) == false)
+        #expect(step.isLanding)
+        step.landed()  // turning up after all does no harm
+        #expect(!step.isLanding)
+    }
+
+    @MainActor @Test func whatLandsAfterItsDropWasTakenBackIsTheNextUndo() {
+        let history = StashUndoHistory()
+        history.begin().record(.added(URL(filePath: "/earlier.txt")))
+        let step = history.begin()
+        step.expect()
+        step.record(.added(URL(filePath: "/first.jpg")))
+        #expect(history.popLatest() === step)
+        #expect(step.takeBack() == [.added(URL(filePath: "/first.jpg"))])
+        #expect(step.changes.isEmpty, "taken back, so not taken back twice")
+
+        step.record(.added(URL(filePath: "/late.jpg")))
+        step.landed()
+        #expect(history.popLatest()?.takeBack() == [.added(URL(filePath: "/late.jpg"))])
+        #expect(history.popLatest()?.changes == [.added(URL(filePath: "/earlier.txt"))])
     }
 
     @MainActor @Test func keepsOnlyTheLatestSteps() {

@@ -1,5 +1,4 @@
 import AppKit
-import ImageIO
 import SeashellCore
 
 /// Turns a drop (files, promised files, links, images, text) into Stash items.
@@ -115,25 +114,24 @@ final class StashDropper {
         return true
     }
 
-    private static let readableImageTypes = Set(CGImageSourceCopyTypeIdentifiers() as? [String] ?? [])
-
     /// A picture's data as its pasteboard item holds it, PNG or TIFF first:
     /// anything ImageIO can read.
     private static func imageData(on item: NSPasteboardItem) -> Data? {
         let types = [NSPasteboard.PasteboardType.png, .tiff] + item.types
         return types.lazy
-            .filter { item.types.contains($0) && readableImageTypes.contains($0.rawValue) }
+            .filter { item.types.contains($0) && ImageConversion.readableTypes.contains($0.rawValue) }
             .compactMap { item.data(forType: $0) }
             .first
     }
 
     /// Each link's title, by its address: browsers put both on the link's own
-    /// pasteboard item.
+    /// pasteboard item. The address is spelled as the dropped URL spells it
+    /// (“Zürich” comes in as “Z%C3%BCrich”), so they match.
     private static func linkTitles(on pasteboard: NSPasteboard) -> [String: String] {
         var titles: [String: String] = [:]
         for item in pasteboard.pasteboardItems ?? [] {
             if let address = item.string(forType: .URL), let title = item.string(forType: urlTitleType) {
-                titles[address] = title
+                titles[URL(string: address)?.absoluteString ?? address] = title
             }
         }
         return titles
@@ -279,19 +277,25 @@ final class StashDropper {
         }
     }
 
+    /// How long ⌘Z waits for a drop still landing before taking back what has.
+    private static let landingWait = Duration.seconds(60)
+
     /// ⌘Z: takes back the latest drop, paste or move between shelves, whichever
     /// shelf it went to. One still landing (a big copy, a promised file) is taken
-    /// back once it has landed. False if there was nothing left to take back, or
-    /// an earlier ⌘Z is still waiting.
+    /// back once it has landed, or after a minute what has (the rest, landing
+    /// later, is the next ⌘Z's). False if there was nothing left to take back,
+    /// or an earlier ⌘Z is still waiting.
     func undoLast() async -> Bool {
         guard !isUndoing, let step = history.popLatest() else { return false }
         isUndoing = true
         defer { isUndoing = false }
         if step.isLanding {
             Log.info("Undo: waiting for the last drop to land")
-            await step.untilLanded()
+            if !(await step.untilLanded(within: Self.landingWait)) {
+                Log.info("Undo: the drop hasn’t finished landing after \(Self.landingWait); taking back what has")
+            }
         }
-        let changes = step.changes
+        let changes = step.takeBack()
         // Items since moved, renamed or trashed are left alone.
         let present = changes.filter { FileManager.default.fileExists(atPath: $0.item.path(percentEncoded: false)) }
         Log.info("Undo: \(present.count) of \(changes.count) \(changes.count == 1 ? "item" : "items") from the last drop")

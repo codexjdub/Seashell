@@ -26,6 +26,9 @@ enum ItemActions {
         Log.info("Copied \(items.count) item\(items.count == 1 ? "" : "s") to the clipboard")
     }
 
+    /// Copy Texts asked for so far: only the latest one's text goes onto the clipboard.
+    private static var copyTextRuns = 0
+
     /// Copy Text: the words in the pictures and PDFs among `items`, read on this
     /// Mac in the background, onto the clipboard (several with a blank line
     /// between). Says so if there's no text, or if an item is only in iCloud
@@ -42,6 +45,9 @@ enum ItemActions {
             return
         }
         Log.info("Copy Text from \(readable.count) item\(readable.count == 1 ? "" : "s")")
+        copyTextRuns += 1
+        let run = copyTextRuns
+        let clipboard = NSPasteboard.general.changeCount
         Task {
             var texts: [String] = []
             var failure: (any Error)?
@@ -56,6 +62,12 @@ enum ItemActions {
             }
             guard !texts.isEmpty else {
                 if let failure { Alerts.showError("Couldn’t copy any text", failure) }
+                return
+            }
+            // A long read can finish after you've copied something else, or
+            // asked for Copy Text again: the newer one stays on the clipboard.
+            guard run == copyTextRuns, NSPasteboard.general.changeCount == clipboard else {
+                Log.info("Copy Text: the clipboard changed while reading; left as it is")
                 return
             }
             NSPasteboard.general.clearContents()
