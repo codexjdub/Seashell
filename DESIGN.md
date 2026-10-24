@@ -21,6 +21,12 @@ A third area, the Clipboard (Copy and Cut), is designed but on hold; see the end
 - Opens by pulling down at the top screen edge (two fingers down ~40 pt, or 2 wheel clicks toward you, whatever the natural-scrolling setting), from the menu bar item, or by holding a drag at the top edge for half a second (not within 100 pt of the corners, where hot corners live).
 - Closes on a click outside it, Esc, pushing up at the top edge, or the menu bar item. A press outside that turns into dragging a file or text keeps it open, so you can drag things into it.
 - The app icon's shell sits on the panel's right edge like a seal: the shell and strands without the icon's white tile, which glared on a dark panel, its center a fifth of the way down (the same on the grab shelf, drop shelf and tear-off shelves), about a third outside (click it for Settings; 42 pt at Small, no shadow of its own), and pin and close sit in a small pill over the bottom right corner the same way. They act on the whole panel, not on Notes. The window keeps 16 pt of room past the right edge for them, and the same empty room on the left so the panel stays centered; clicks in that see-through room go to whatever is underneath. The buttons are round, with a faint gray fill that darkens on hover and press, echoing the pill's rounded ends. The icon and pill scale with the text size.
+- The shell reacts to its shelf (SealView), moving only as a whole, never its wind curls on their own (those are the easter egg's):
+  - **Catch**: anything that lands (a drop, a paste, items dragged onto a tab) gets a squash and a bounce, about a third of a second, pivoting at the hinge.
+  - **Lean**: while a drag from another app is over a Seashell window, its shell tips in toward the pointer (6°, give or take 4 as the pointer is higher or lower, and 3 pt to the left) and settles when the drag leaves or ends. It goes by DragWatcher's global drag events, so drags from Seashell's own grid don't count.
+  - **Head shake**: side to side with the beep, when ⌘Z finds nothing to take back.
+  - **Pearl**: something new on a shelf puts a small pearl at every shell's hinge (popping in), and its shelf's row in the menu bar menu says "N new" instead of the count. New means it turned up and Seashell on this Mac didn't put it there: saved from an iPhone (Files) or another Mac, or added or renamed in Finder. Everything Seashell writes into a shelf is noted first (LocalWrites, kept 10 minutes), and StashStore counts the rest, from launch, on shelves it already knew (a shelf renamed here would otherwise arrive whole, so one made elsewhere with items in it doesn't count). The source can't be told: macOS doesn't say which device saved a file. The pearl stays while the panel is open, so its shell shows it, and goes when the panel closes.
+  - With Reduce Motion on, nothing moves; the pearl still shows, without its pop. Tried on 2026-10-24: the catch, lean and shake, the pearl popping in on the open panel, "1 new" in the menu, and closing the panel clearing it.
 - The pin stops clicks elsewhere from closing it; Esc, pushing up and the menu item still do. The pin is remembered until you unpin it, across closes and launches.
 - Takes keys (Esc, ⌘⌫, Space) without taking focus from the app you're in.
 - Dropping an item from the panel into another app brings that app to the front, so typing goes where the item landed, and closes the panel unless it's pinned.
@@ -136,7 +142,8 @@ Sources/
   SeashellCore/           ← no UI, unit-tested
     SeashellFolders       where things live; creates missing folders
     StashLibrary          shelves and items on disk; shelf order
-    StashStore            the live view of Stash for the UI; re-reads changed shelves in the background
+    StashStore            the live view of Stash for the UI; re-reads changed shelves in the background; new arrivals
+    LocalWrites           what Seashell just put on a shelf, so it isn't counted as arrived
     ShelfManifest         a shelf's .seashell.json: item order, Put Back origins
     FileMover             in (same-volume rename; cross-volume copy/verify/delete), between shelves, back out, to the Trash; rename; undo; batches write each manifest once
     StashUndo             what ⌘Z takes back: each drop's changes, the last 20 steps; drops still landing

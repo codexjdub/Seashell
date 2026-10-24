@@ -315,6 +315,7 @@ final class StashPanelController: NSViewController {
         let urls = draggedURLs
         note("\(count(urls.count)) dragged from the grid onto tab “\(shelf.name)”")
         move(urls, to: shelf.url)
+        if !urls.isEmpty { SealView.react(.catchDrop, in: view.window) }
         return !urls.isEmpty
     }
 
@@ -398,7 +399,11 @@ final class StashPanelController: NSViewController {
     private func pasteIntoShelf() {
         guard let shelf = currentShelf else { return }
         note("Paste into “\(shelf.name)”")
-        if !dropper.paste(into: shelf.url) { NSSound.beep() }
+        if dropper.paste(into: shelf.url) {
+            SealView.react(.catchDrop, in: view.window)
+        } else {
+            NSSound.beep()
+        }
     }
 
     /// ⌘Z: the latest drop, paste or move between shelves goes back.
@@ -409,6 +414,7 @@ final class StashPanelController: NSViewController {
                 store.reload(around: nil)
             } else {
                 NSSound.beep()
+                SealView.react(.shake, in: view.window)
             }
         }
     }

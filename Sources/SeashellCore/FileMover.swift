@@ -34,14 +34,17 @@ public struct FileMover: Sendable {
     private let trash: Trash
     /// Tests set this to exercise the copy-verify-delete path on a single disk.
     private let simulateOtherVolume: Bool
+    /// Where it notes what it puts on a shelf, so the store doesn't count it as arrived.
+    let localWrites: LocalWrites
 
-    public init(trash: @escaping Trash = FileMover.systemTrash) {
-        self.init(trash: trash, simulateOtherVolume: false)
+    public init(trash: @escaping Trash = FileMover.systemTrash, localWrites: LocalWrites = .shared) {
+        self.init(trash: trash, simulateOtherVolume: false, localWrites: localWrites)
     }
 
-    init(trash: @escaping Trash, simulateOtherVolume: Bool) {
+    init(trash: @escaping Trash, simulateOtherVolume: Bool, localWrites: LocalWrites = .shared) {
         self.trash = trash
         self.simulateOtherVolume = simulateOtherVolume
+        self.localWrites = localWrites
     }
 
     // MARK: Into Stash
@@ -71,6 +74,7 @@ public struct FileMover: Sendable {
             return source
         }
         let destination = FileNaming.uniqueDestination(for: source.lastPathComponent, in: shelf, isDirectory: isDirectory(source))
+        localWrites.note(destination)
         try transfer(source, to: destination, measured: measured)
         let origin = rememberOrigin ? source.deletingLastPathComponent().path(percentEncoded: false) : nil
         edits.change(shelf) { $0.add(destination.lastPathComponent, origin: origin) }
@@ -93,6 +97,7 @@ public struct FileMover: Sendable {
     private func stashCopy(_ source: URL, into shelf: URL, edits: ManifestEdits) throws -> URL {
         guard exists(source) else { throw FileMoverError.missing(source.lastPathComponent) }
         let destination = FileNaming.uniqueDestination(for: source.lastPathComponent, in: shelf, isDirectory: isDirectory(source))
+        localWrites.note(destination)
         try Coordinated.read(source) { try FileManager.default.copyItem(at: $0, to: destination) }
         edits.change(shelf) { $0.add(destination.lastPathComponent, origin: nil) }
         Log.info("Copied \(source.lastPathComponent) → \(shelf.lastPathComponent)/\(destination.lastPathComponent)")
@@ -133,6 +138,7 @@ public struct FileMover: Sendable {
         let from = item.deletingLastPathComponent()
         let origin = edits.origin(of: item)
         let destination = FileNaming.uniqueDestination(for: name ?? item.lastPathComponent, in: shelf, isDirectory: isDirectory(item))
+        localWrites.note(destination)
         try transfer(item, to: destination)
         edits.change(from) { $0.remove(item.lastPathComponent) }
         edits.change(shelf) { $0.add(destination.lastPathComponent, origin: origin) }
@@ -151,6 +157,7 @@ public struct FileMover: Sendable {
         let destination = shelf.appending(path: cleaned, directoryHint: isDirectory(item) ? .isDirectory : .notDirectory)
         // Another item already has that name (a change of case alone is fine).
         if exists(destination), cleaned.lowercased() != current.lowercased() { throw FileMoverError.nameTaken(cleaned) }
+        localWrites.note(destination)
         try Coordinated.move(item, to: destination)
         try ShelfManifest.update(in: shelf) { $0.rename(current, to: cleaned) }
         Log.info("Renamed \(current) → \(cleaned)")
@@ -293,6 +300,7 @@ public struct FileMover: Sendable {
 
     private func write(_ data: Data, named name: String, into shelf: URL) throws -> URL {
         let destination = FileNaming.uniqueDestination(for: name, in: shelf, isDirectory: false)
+        localWrites.note(destination)
         try Coordinated.write(destination) { try data.write(to: $0, options: .withoutOverwriting) }
         try ShelfManifest.update(in: shelf) { $0.add(destination.lastPathComponent, origin: nil) }
         Log.info("Stashed \(destination.lastPathComponent) → \(shelf.lastPathComponent)")

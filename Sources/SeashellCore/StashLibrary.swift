@@ -73,6 +73,9 @@ public struct StashLibrary: Sendable {
         self.mover = mover
     }
 
+    /// What Seashell itself has just put on a shelf (see LocalWrites).
+    var localWrites: LocalWrites { mover.localWrites }
+
     /// Main first, then the order you dragged the tabs into (the Stash folder's
     /// `.seashell.json`, so it syncs), then any shelves it doesn't list yet
     /// (made in Finder or on another Mac) in Finder's name order.

@@ -46,8 +46,11 @@ final class StashDropper {
     /// Stashes everything in the drop into `shelf`: files move in, or are copied
     /// in when the drop is a copy (see `operation(for:)`), so they go as the
     /// pointer's badge says. Returns false if nothing was usable.
+    /// The shell in the window it landed in catches it.
     func accept(_ info: any NSDraggingInfo, into shelf: URL) -> Bool {
-        accept(info.draggingPasteboard, into: shelf, copyingFiles: Self.operation(for: info) == .copy)
+        let accepted = accept(info.draggingPasteboard, into: shelf, copyingFiles: Self.operation(for: info) == .copy)
+        if accepted { SealView.react(.catchDrop, in: info.draggingDestinationWindow) }
+        return accepted
     }
 
     /// "Stash in Seashell" in the Services menu: like a drop of the selection.

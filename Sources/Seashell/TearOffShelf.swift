@@ -321,7 +321,11 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
     private func paste() {
         guard let shelf else { return }
         note("paste")
-        if !dropper.paste(into: shelf.url) { NSSound.beep() }
+        if dropper.paste(into: shelf.url) {
+            SealView.react(.catchDrop, in: window)
+        } else {
+            NSSound.beep()
+        }
     }
 
     /// ⌘Z: the latest drop, paste or move between shelves goes back.
@@ -332,6 +336,7 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
                 store.reload(around: nil)
             } else {
                 NSSound.beep()
+                SealView.react(.shake, in: window)
             }
         }
     }

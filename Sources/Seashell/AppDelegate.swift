@@ -100,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         observeChanges { [optionShakeWatcher] in optionShakeWatcher.setShakeSensitivity(AppSettings.shared.shakeSensitivity) }
         dragWatcher.onHoldAtTopEdge = { panel.open(on: NSScreen.containing($0), reason: "drag held at top edge") }
+        dragWatcher.onDragMoved = { SealView.dragMoved(to: $0) }
         dragWatcher.start()
         edgeScrollWatcher.onGesture = { gesture, screen in
             switch gesture {
@@ -113,8 +114,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let updateScrollWatching: @MainActor @Sendable () -> Void = { [edgeScrollWatcher] in
             edgeScrollWatcher.isWatching = AppSettings.shared.opensOnPullDown || panel.isOpen
         }
-        panel.onOpenChanged = updateScrollWatching
+        panel.onOpenChanged = {
+            updateScrollWatching()
+            // What's new has been seen once the panel has been open (its shell shows the pearl meanwhile).
+            if !panel.isOpen { store.markArrivalsSeen() }
+        }
         observeChanges(updateScrollWatching)
+        // A pearl on every shell while something new has arrived.
+        observeChanges {
+            let arrived = store.arrivals.values.map(\.count).reduce(0, +)
+            if arrived > 0, !SealView.showsPearl { Log.info("New since the panel was last open: \(arrived) item(s)") }
+            SealView.showsPearl = arrived > 0
+        }
         tipsWindow.showIfFirstLaunch()
     }
 

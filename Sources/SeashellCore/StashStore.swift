@@ -10,6 +10,11 @@ public final class StashStore {
     public private(set) var shelves: [Shelf] = []
     /// Keyed by shelf name, which is unique within Stash and doesn't depend on how a path is spelled.
     private var itemsByShelf: [String: [StashItem]] = [:]
+    /// Items that turned up since `markArrivalsSeen()`, by shelf name, that
+    /// Seashell on this Mac didn't put there: saved from an iPhone or another
+    /// Mac, or added in Finder. Counted from launch, on shelves already known
+    /// (a shelf renamed here would otherwise arrive whole).
+    public private(set) var arrivals: [String: Set<String>] = [:]
 
     @ObservationIgnored public let library: StashLibrary
     /// Called after each background re-read (a change on disk, or `reload(around:)`).
@@ -44,6 +49,11 @@ public final class StashStore {
 
     public func items(in shelf: Shelf) -> [StashItem] {
         itemsByShelf[shelf.name] ?? []
+    }
+
+    /// The panel has been opened: nothing counts as new any more.
+    public func markArrivalsSeen() {
+        if !arrivals.isEmpty { arrivals = [:] }
     }
 
     /// The most recently added items across every shelf, newest first: what the
@@ -101,12 +111,22 @@ public final class StashStore {
     private func apply(_ newShelves: [Shelf], _ contents: [String: ShelfContents]) {
         var newItems: [String: [StashItem]] = [:]
         var newVanished: [String: Set<String>] = [:]
+        var newArrivals: [String: Set<String>] = [:]
         for shelf in newShelves {
-            newItems[shelf.name] = contents[shelf.name]?.items ?? itemsByShelf[shelf.name] ?? []
+            let items = contents[shelf.name]?.items ?? itemsByShelf[shelf.name] ?? []
+            newItems[shelf.name] = items
             newVanished[shelf.name] = contents[shelf.name]?.vanished ?? vanishedByShelf[shelf.name] ?? []
+            let names = Set(items.map(\.name))
+            var arrived = arrivals[shelf.name, default: []].intersection(names)  // less any since gone
+            if contents[shelf.name] != nil, let before = itemsByShelf[shelf.name] {
+                let known = Set(before.map(\.name))
+                arrived.formUnion(items.filter { !known.contains($0.name) && !library.localWrites.claim($0.url) }.map(\.name))
+            }
+            if !arrived.isEmpty { newArrivals[shelf.name] = arrived }
         }
         if newShelves != shelves { shelves = newShelves }
         if newItems != itemsByShelf { itemsByShelf = newItems }
+        if newArrivals != arrivals { arrivals = newArrivals }
         vanishedByShelf = newVanished
         pruneVanishedEntries()
     }

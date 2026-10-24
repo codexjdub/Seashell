@@ -64,7 +64,7 @@ final class PanelController: NSObject {
     }()
     private lazy var pinButton: NSButton = PillButton(target: self, action: #selector(togglePin))
     /// The app icon at the top of the pill; opens Settings.
-    private lazy var iconButton: NSButton = {
+    private lazy var iconButton: SealView = {
         Seal.button(target: self, action: #selector(iconClicked), toolTip: "Seashell Settings")
     }()
     private var clickMonitor: Any?

@@ -66,7 +66,9 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         menu.addItem(.sectionHeader(title: "Stash"))
         for shelf in store.shelves {
             let shelfItem = item(shelf.name, #selector(openShelf), represents: shelf.name)
-            shelfItem.badge = NSMenuItemBadge(count: store.items(in: shelf).count)
+            // New arrivals (the shells' pearl) rather than the count, while there are any.
+            let arrived = store.arrivals[shelf.name]?.count ?? 0
+            shelfItem.badge = arrived > 0 ? .newItems(count: arrived) : NSMenuItemBadge(count: store.items(in: shelf).count)
             shelfItem.indentationLevel = 1
             menu.addItem(shelfItem)
         }

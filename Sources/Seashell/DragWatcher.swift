@@ -7,10 +7,14 @@ import SeashellCore
 /// - a shake of the pointer (`onShake`), unless shaking is off in Settings, and
 /// - the pointer held at the top edge, away from the corners, for half a second
 ///   (`onHoldAtTopEdge`).
+///
+/// It also reports where a drag from another app is as it moves
+/// (`onDragMoved`), for the shells to lean toward.
 @MainActor
 final class DragWatcher {
     var onShake: ((NSPoint) -> Void)?
     var onHoldAtTopEdge: ((NSPoint) -> Void)?
+    var onDragMoved: ((NSPoint) -> Void)?
 
     private static let holdDelay: Duration = .milliseconds(500)
 
@@ -31,12 +35,12 @@ final class DragWatcher {
         let events: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged]
         // Global monitors see other apps' events; the local one sees Seashell's own.
         if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self] event in
-            MainActor.assumeIsolated { self?.handle(event) }
+            MainActor.assumeIsolated { self?.handle(event, fromOtherApp: true) }
         }) {
             monitors.append(global)
         }
         if let local = NSEvent.addLocalMonitorForEvents(matching: events, handler: { [weak self] event in
-            MainActor.assumeIsolated { self?.handle(event) }
+            MainActor.assumeIsolated { self?.handle(event, fromOtherApp: false) }
             return event
         }) {
             monitors.append(local)
@@ -44,7 +48,7 @@ final class DragWatcher {
         Log.info(monitors.count == 2 ? "Watching drags for a shake" : "Couldn’t watch drags; shaking won’t open the floating shelf")
     }
 
-    private func handle(_ event: NSEvent) {
+    private func handle(_ event: NSEvent, fromOtherApp: Bool) {
         switch event.type {
         case .leftMouseDown:
             changeCountAtPress = dragPasteboard.changeCount
@@ -55,6 +59,7 @@ final class DragWatcher {
         case .leftMouseDragged:
             guard dragPasteboard.changeCount != changeCountAtPress else { return }
             let point = NSEvent.mouseLocation
+            if fromOtherApp { onDragMoved?(point) }
             watchForHold(at: point)
             if !shookThisDrag, detector?.add(x: point.x, at: event.timestamp) == true {
                 shookThisDrag = true
