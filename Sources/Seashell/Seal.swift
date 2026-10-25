@@ -41,8 +41,8 @@ enum Seal {
 
 /// The shell on a panel's edge, which reacts to what happens on its shelf:
 /// it catches a drop, leans toward a drag from another app, shakes its head
-/// when ⌘Z has nothing to take back, and holds a pearl while something new has
-/// arrived (StashStore's arrivals). Only the shell moves as a whole, never its
+/// when ⌘Z has nothing to take back, holds a pearl while something new has
+/// arrived (StashStore's arrivals), and breathes while Read Aloud reads. Only the shell moves as a whole, never its
 /// wind curls on their own: those belong to the easter egg. With Reduce Motion
 /// on it stays still; the pearl still shows.
 @MainActor
@@ -63,10 +63,19 @@ final class SealView: NSView {
             all.allObjects.forEach { $0.updatePearl(animated: true) }
         }
     }
+    /// Read Aloud is reading: every shell breathes.
+    static var isBreathing = false {
+        didSet {
+            guard isBreathing != oldValue else { return }
+            all.allObjects.forEach { $0.updateBreathing() }
+        }
+    }
     private static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     /// Where the shell's ribs meet, as a fraction of its frame from the bottom
-    /// left (the icon's 512, 724 from the top): it pivots there.
-    private static let hinge = CGPoint(x: 0.5, y: 0.293)
+    /// left: it pivots there, and the pearl sits just below. The shell is right
+    /// of the picture's middle (the wind curls take the left): measured in
+    /// Seal.png, its every row is centered at 0.547.
+    private static let hinge = CGPoint(x: 0.547, y: 0.293)
 
     private let shell = CALayer()
     /// The pearl's shadow; its face is a sublayer, clipped round.
@@ -104,6 +113,7 @@ final class SealView: NSView {
         Self.all.add(self)
         updatePicture()
         updatePearl(animated: false)
+        updateBreathing()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -118,11 +128,16 @@ final class SealView: NSView {
         // Nestled just below the hinge, about a quarter of the shell across.
         let side = (bounds.width * 0.28).rounded()
         pearl.bounds = CGRect(x: 0, y: 0, width: side, height: side)
-        pearl.position = CGPoint(x: bounds.width * 0.5, y: bounds.height * 0.22)
+        pearl.position = CGPoint(x: bounds.width * Self.hinge.x, y: bounds.height * 0.22)
         pearl.shadowPath = CGPath(ellipseIn: pearl.bounds, transform: nil)
         pearlFace.frame = pearl.bounds
         pearlFace.cornerRadius = side / 2
         CATransaction.commit()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateBreathing()
     }
 
     override func viewDidChangeBackingProperties() {
@@ -283,6 +298,27 @@ final class SealView: NSView {
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.3, 0.7, 0.4, 1))
         change()
         CATransaction.commit()
+    }
+
+    // MARK: Breathing while Read Aloud reads
+
+    /// Slowly a little larger and back, about every two and a half seconds,
+    /// from the hinge; added to whatever else it's doing.
+    private func updateBreathing() {
+        guard Self.isBreathing, !Self.reduceMotion else {
+            shell.removeAnimation(forKey: "breathing")
+            return
+        }
+        guard shell.animation(forKey: "breathing") == nil else { return }
+        let breath = CABasicAnimation(keyPath: "transform.scale")
+        breath.fromValue = 0
+        breath.toValue = 0.07
+        breath.isAdditive = true
+        breath.duration = 1.25
+        breath.autoreverses = true
+        breath.repeatCount = .infinity
+        breath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        shell.add(breath, forKey: "breathing")
     }
 
     // MARK: The pearl

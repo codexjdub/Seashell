@@ -35,31 +35,13 @@ enum ItemActions {
     /// (it starts downloading, to try again in a moment).
     static func copyText(_ items: [StashItem]) {
         let readable = items.filter(TextRecognition.canRead)
-        guard !readable.isEmpty else { return }
-        let inICloud = readable.filter { $0.cloud == .cloudOnly }
-        guard inICloud.isEmpty else {
-            inICloud.forEach { try? CloudStatus.startDownloading($0.url) }
-            Log.info("Copy Text: \(inICloud.count) item(s) only in iCloud, downloading")
-            Alerts.tell(inICloud.count == 1 ? "“\(inICloud[0].name)” is only in iCloud" : "\(inICloud.count) items are only in iCloud",
-                        detail: "It’s downloading to this Mac now. Try Copy Text again in a moment.")
-            return
-        }
+        guard !readable.isEmpty, !onlyInICloud(readable, for: "Copy Text") else { return }
         Log.info("Copy Text from \(readable.count) item\(readable.count == 1 ? "" : "s")")
         copyTextRuns += 1
         let run = copyTextRuns
         let clipboard = NSPasteboard.general.changeCount
         Task {
-            var texts: [String] = []
-            var failure: (any Error)?
-            for item in readable {
-                let url = item.url
-                do {
-                    texts.append(try await Task.detached { try await TextRecognition.text(of: url) }.value)
-                } catch {
-                    Log.info("Copy Text: \(error.localizedDescription)")
-                    failure = failure ?? error
-                }
-            }
+            let (texts, failure) = await words(in: readable, for: "Copy Text")
             guard !texts.isEmpty else {
                 if let failure { Alerts.showError("Couldn’t copy any text", failure) }
                 return
@@ -74,6 +56,61 @@ enum ItemActions {
             NSPasteboard.general.setString(texts.joined(separator: "\n\n"), forType: .string)
             Log.info("Copy Text: copied \(texts.joined().count) characters")
         }
+    }
+
+    /// Text snippets, and the pictures and PDFs Copy Text can read.
+    static func canReadAloud(_ item: StashItem) -> Bool {
+        item.kind == .text || TextRecognition.canRead(item)
+    }
+
+    /// Read Aloud: the text snippets among `items` as they are, and the words
+    /// in their pictures and PDFs (as Copy Text finds them), one after another.
+    static func readAloud(_ items: [StashItem]) {
+        let readable = items.filter(canReadAloud)
+        guard !readable.isEmpty, !onlyInICloud(readable, for: "Read Aloud") else { return }
+        Log.info("Read Aloud from \(readable.count) item\(readable.count == 1 ? "" : "s")")
+        let run = ReadAloud.shared.begin()
+        Task {
+            let (texts, failure) = await words(in: readable, for: "Read Aloud")
+            guard !texts.isEmpty else {
+                ReadAloud.shared.cancel(run: run)
+                if let failure { Alerts.showError("Couldn’t read anything aloud", failure) } else { NSSound.beep() }
+                return
+            }
+            ReadAloud.shared.read(texts.joined(separator: "\n\n"), run: run)
+        }
+    }
+
+    /// Items only in iCloud start downloading, with a note to try `action`
+    /// again in a moment. True if there were any.
+    private static func onlyInICloud(_ items: [StashItem], for action: String) -> Bool {
+        let inICloud = items.filter { $0.cloud == .cloudOnly }
+        guard !inICloud.isEmpty else { return false }
+        inICloud.forEach { try? CloudStatus.startDownloading($0.url) }
+        Log.info("\(action): \(inICloud.count) item(s) only in iCloud, downloading")
+        Alerts.tell(inICloud.count == 1 ? "“\(inICloud[0].name)” is only in iCloud" : "\(inICloud.count) items are only in iCloud",
+                    detail: "It’s downloading to this Mac now. Try \(action) again in a moment.")
+        return true
+    }
+
+    /// The words in each item, in the background: a text snippet's text, a
+    /// picture's or PDF's as Copy Text reads them. Failures are logged; the
+    /// first is returned to show if nothing was found.
+    private static func words(in items: [StashItem], for action: String) async -> (texts: [String], failure: (any Error)?) {
+        var texts: [String] = []
+        var failure: (any Error)?
+        for item in items {
+            do {
+                let text = try await Task.detached {
+                    item.kind == .text ? ItemContent.text(of: item) : try await TextRecognition.text(of: item.url)
+                }.value
+                if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { texts.append(text) }
+            } catch {
+                Log.info("\(action): \(error.localizedDescription)")
+                failure = failure ?? error
+            }
+        }
+        return (texts, failure)
     }
 
     /// Whether the clipboard holds something a shelf can take.

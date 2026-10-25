@@ -360,6 +360,11 @@ final class StashPanelController: NSViewController {
         menu.addItem(.separator())
         add("Copy", #selector(copySelection))
         if selection.contains(where: TextRecognition.canRead) { add("Copy Text", #selector(copyTextFromSelection)) }
+        if ReadAloud.shared.isReading {
+            add("Stop Reading", #selector(stopReading))
+        } else if selection.contains(where: ItemActions.canReadAloud) {
+            add("Read Aloud", #selector(readAloudSelection))
+        }
         add("Paste", #selector(pasteFromMenu), enabled: ItemActions.canPaste)
         add("Rename…", #selector(renameSelection), enabled: selection.count == 1)
         menu.addItem(.separator())
@@ -385,6 +390,16 @@ final class StashPanelController: NSViewController {
     @objc private func copySelection() {
         note("Copy \(count(selectedItems.count))")
         ItemActions.copy(selectedItems)
+    }
+
+    @objc private func readAloudSelection() {
+        note("Read Aloud \(count(selectedItems.count))")
+        ItemActions.readAloud(selectedItems)
+    }
+
+    @objc private func stopReading() {
+        note("Stop Reading")
+        ReadAloud.shared.stop()
     }
 
     @objc private func copyTextFromSelection() {

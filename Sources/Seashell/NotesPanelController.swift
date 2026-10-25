@@ -337,6 +337,11 @@ final class NotesPanelController: NSViewController {
         add("Show in Finder", #selector(showInFinder), for: clicked)
         menu.addItem(.separator())
         add("Copy", #selector(copyNote), for: clicked)
+        if ReadAloud.shared.isReading {
+            add("Stop Reading", #selector(stopReading))
+        } else {
+            add("Read Aloud", #selector(readNoteAloud), for: clicked)
+        }
         add("Duplicate", #selector(duplicateNote), for: clicked)
         add(clicked.isPinned ? "Unpin" : "Pin", #selector(togglePin), for: clicked)
         menu.addItem(.separator())
@@ -413,6 +418,22 @@ final class NotesPanelController: NSViewController {
         note("Show in Finder \(target.title)")
         flush(target)
         NSWorkspace.shared.activateFileViewerSelecting([target.url])
+    }
+
+    /// Its latest text, waiting edits included, read aloud.
+    @objc private func readNoteAloud(_ sender: NSMenuItem) {
+        guard let target = menuNote(sender) else { return }
+        note("Read Aloud \(target.title)")
+        flush(target)
+        guard let text = try? store.library.read(target), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return NSSound.beep()
+        }
+        ReadAloud.shared.read(text)
+    }
+
+    @objc private func stopReading() {
+        note("Stop Reading")
+        ReadAloud.shared.stop()
     }
 
     @objc private func copyNote(_ sender: NSMenuItem) {

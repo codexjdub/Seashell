@@ -60,6 +60,8 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
             toggle.keyEquivalentModifierMask = shortcut == .controlOptionCommandS ? [.control, .option, .command] : [.control, .option]
         }
         menu.addItem(toggle)
+        // Reading goes on with the panel closed: it can be stopped here too.
+        if ReadAloud.shared.isReading { menu.addItem(item("Stop Reading", #selector(stopReading))) }
         menu.addItem(.separator())
 
         // Grey headings, with their rows indented under them.
@@ -134,6 +136,10 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
 
     @objc private func togglePanel() {
         panel.toggle(reason: "menu")
+    }
+
+    @objc private func stopReading() {
+        ReadAloud.shared.stop()
     }
 
     /// `~/Documents/Seashell`, which holds both Stash and Notes.
