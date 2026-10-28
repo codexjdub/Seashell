@@ -52,10 +52,10 @@ final class PanelController: NSObject {
     /// Sizes beside the panel (app icon, pill, buttons), written at Small and scaled with the text.
     private var scaledConstraints: [(constraint: NSLayoutConstraint, base: CGFloat)] = []
     private let pill = NSVisualEffectView()
-    private static let pillWidth: CGFloat = 34
-    private static let pillButtonSize: CGFloat = 26
+    static let pillWidth: CGFloat = 34
+    static let pillButtonSize: CGFloat = 26
     /// From the panel's bottom edge to the pill.
-    private static let cornerInset: CGFloat = 6
+    static let cornerInset: CGFloat = 6
     private lazy var closeButton: NSButton = {
         let button = PillButton(target: self, action: #selector(closeButtonClicked))
         button.contentTintColor = .secondaryLabelColor
@@ -382,7 +382,7 @@ final class PanelController: NSObject {
     }
 
     /// A symbol sized with the text.
-    private static func symbol(_ name: String, _ description: String) -> NSImage? {
+    static func symbol(_ name: String, _ description: String) -> NSImage? {
         NSImage(systemSymbolName: name, accessibilityDescription: description)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: UIScale.pt(12), weight: .medium))
     }

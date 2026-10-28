@@ -81,7 +81,7 @@ final class OptionShakeWatcher {
 /// The grab shelf: pops up next to the pointer on ⌥-shake with the most recent
 /// items from every shelf, to drag straight out (a copy lands; the item stays).
 /// It goes away after a drag out, a click elsewhere, or when the pointer moves
-/// well away; More… opens the full panel.
+/// well away, unless pinned; More… opens the full panel.
 @MainActor
 final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegate {
     static let maxItems = 8
@@ -107,9 +107,24 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
     private var isDragging = false
     private var gridTop: NSLayoutConstraint?
     private lazy var seal = Seal.button(target: self, action: #selector(sealClicked), toolTip: "Seashell Settings")
-    /// Sizes around the seal, written at Small and scaled with the text.
-    private var sealConstraints: [(constraint: NSLayoutConstraint, base: CGFloat)] = []
+    /// Sizes around the seal and the pill, written at Small and scaled with the text.
+    private var scaledConstraints: [(constraint: NSLayoutConstraint, base: CGFloat)] = []
     private var sealCenter: NSLayoutConstraint?
+    /// Pin, and close while pinned, over the bottom right corner like the panel's.
+    private let pill = NSVisualEffectView()
+    private var pillHeight: NSLayoutConstraint?
+    private lazy var pinButton = PillButton(target: self, action: #selector(togglePin))
+    private lazy var closeButton = PillButton(target: self, action: #selector(closeClicked))
+    /// Pinned, it stays up through clicks elsewhere, the pointer moving away
+    /// and drags out, and moves by its header, until closed or ⌥-shaken away.
+    /// Each ⌥-shake shows it unpinned.
+    private var isPinned = false {
+        didSet {
+            panel.isMovableByWindowBackground = isPinned
+            updatePin()
+        }
+    }
+    private(set) var isShowing = false
     /// Moving away doesn't count until then: the end of the shake itself can
     /// carry the pointer off before you reach for the shelf.
     private var shownAt = ContinuousClock.now
@@ -119,11 +134,11 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
 
     init(store: StashStore) {
         self.store = store
+        super.init()
+        observeChanges { [weak self] in self?.refresh() }
     }
 
-    var isShowing: Bool { panel.isVisible }
-
-    /// A second ⌥-shake while it's up puts it away.
+    /// A second ⌥-shake while it's up puts it away, pinned or not.
     func toggle(at point: NSPoint) {
         isShowing ? hide(reason: "⌥-shake again") : show(at: point)
     }
@@ -135,17 +150,11 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
         moreButton.font = UIScale.font(12)
         layout.itemSize = StashItemCell.tileSize
         gridTop?.constant = Self.padding + UIScale.pt(28)
-        emptyLabel.isHidden = !items.isEmpty
-        grid.reloadData()
-        _ = panel  // built first, so its seal constraints exist to size
-        let shelf = Self.size(for: items.count)
-        for (constraint, base) in sealConstraints { constraint.constant = UIScale.pt(base) }
-        sealCenter?.constant = Seal.centerOffset(inHeight: shelf.height)
-        // The window is a little wider than the shelf, for the seal on its edge.
-        let size = NSSize(width: shelf.width + UIScale.pt(Seal.sideRoom), height: shelf.height)
-        panel.setContentSize(size)
+        isPinned = false
+        let size = fill()
         panel.setFrameOrigin(Self.origin(near: point, size: size))
         panel.orderFrontRegardless()
+        isShowing = true
         shownAt = .now
         watchForLeaving()
         Log.info("⌥-shake: grab shelf shown with \(items.count) item\(items.count == 1 ? "" : "s")")
@@ -153,9 +162,36 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
 
     func hide(reason: String) {
         guard isShowing else { return }
+        isShowing = false
         stopWatching()
         panel.orderOut(nil)
         Log.info("Grab shelf hidden (\(reason))")
+    }
+
+    /// Shows `items` and sizes the window to fit them all.
+    private func fill() -> NSSize {
+        emptyLabel.isHidden = !items.isEmpty
+        grid.reloadData()
+        _ = panel  // built first, so its seal constraints exist to size
+        let shelf = Self.size(for: items.count)
+        for (constraint, base) in scaledConstraints { constraint.constant = UIScale.pt(base) }
+        sealCenter?.constant = Seal.centerOffset(inHeight: shelf.height)
+        updatePin()
+        // The window is a little wider than the shelf, for the seal on its edge.
+        let size = NSSize(width: shelf.width + UIScale.pt(Seal.sideRoom), height: shelf.height)
+        panel.setContentSize(size)
+        return size
+    }
+
+    /// While it's up (pinned, that can be a while), items stashed meanwhile
+    /// show; its top edge stays put as it grows or shrinks.
+    private func refresh() {
+        let recent = store.recentItems(limit: Self.maxItems)
+        guard isShowing, recent != items else { return }
+        items = recent
+        let top = panel.frame.maxY
+        let size = fill()
+        panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: top - size.height))
     }
 
     private static func size(for count: Int) -> NSSize {
@@ -167,7 +203,8 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
         // at any text size can't push a column or row out.
         let width = CGFloat(columns) * tile.width + CGFloat(columns - 1) * spacing + 2 * padding + 2
         let gridHeight = count == 0 ? UIScale.pt(40) : CGFloat(rows) * tile.height + CGFloat(rows - 1) * spacing + 2
-        return NSSize(width: max(width, UIScale.pt(240)), height: header + gridHeight + 2 * padding)
+        // Tall enough, empty, for the pill to clear the seal.
+        return NSSize(width: max(width, UIScale.pt(240)), height: max(header + gridHeight + 2 * padding, UIScale.pt(140)))
     }
 
     /// Above the pointer, like the drop shelf; kept on screen.
@@ -215,6 +252,29 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
         onSettings?()
     }
 
+    @objc private func togglePin() {
+        isPinned.toggle()
+        // Unpinned, it goes away again as it did, from where it is now.
+        isPinned ? stopWatching() : watchForLeaving()
+        Log.info(isPinned ? "Grab shelf pinned" : "Grab shelf unpinned")
+    }
+
+    @objc private func closeClicked() {
+        hide(reason: "close button")
+    }
+
+    private func updatePin() {
+        pinButton.image = PanelController.symbol(isPinned ? "pin.fill" : "pin", isPinned ? "Unpin" : "Pin")
+        pinButton.contentTintColor = isPinned ? .controlAccentColor : .secondaryLabelColor
+        pinButton.toolTip = isPinned ? "Unpin: go away when clicking elsewhere or moving away"
+                                     : "Pin: stay up after a drag out or a click elsewhere (drag the header to move it)"
+        closeButton.image = PanelController.symbol("xmark", "Close")
+        closeButton.isHidden = !isPinned
+        // A circle around the pin alone; it grows down for close.
+        let buttons: CGFloat = isPinned ? 2 : 1
+        pillHeight?.constant = UIScale.pt(buttons * PanelController.pillButtonSize + (buttons - 1) * 4 + 8)
+    }
+
     @objc private func moreClicked() {
         let point = NSEvent.mouseLocation
         hide(reason: "More…")
@@ -257,7 +317,7 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
         isDragging = false
         Log.info(operation.isEmpty ? "Grab shelf: drag out ended, not taken" : "Grab shelf: drag out taken")
         guard !operation.isEmpty else { return }
-        hide(reason: "dropped")
+        if !isPinned { hide(reason: "dropped") }
         onDraggedOut?(screenPoint)
     }
 
@@ -326,9 +386,27 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
             emptyLabel.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
         ])
+        // The pill under it: its top stays put, so the pin doesn't move when
+        // close appears below it.
+        let size = PanelController.pillButtonSize
+        pill.material = .popover
+        pill.state = .active
+        pill.wantsLayer = true
+        pill.layer?.masksToBounds = true
+        pill.layer?.cornerRadius = UIScale.pt(PanelController.pillWidth) / 2
+        closeButton.contentTintColor = .secondaryLabelColor
+        closeButton.toolTip = "Close"
+        let buttons = NSStackView(views: [pinButton, closeButton])
+        buttons.orientation = .vertical
+        buttons.spacing = 4
+        buttons.translatesAutoresizingMaskIntoConstraints = false
+        pill.addSubview(buttons)
+        let pillHeight = pill.heightAnchor.constraint(equalToConstant: 0)
+        self.pillHeight = pillHeight
+
         // The shelf, with the seal a fifth of the way down its right edge.
         let container = NSView()
-        for view in [background, seal] {
+        for view in [background, seal, pill] {
             view.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(view)
         }
@@ -337,16 +415,26 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
             (seal.trailingAnchor.constraint(equalTo: background.trailingAnchor), Seal.overhang),
             (seal.widthAnchor.constraint(equalToConstant: 0), Seal.size),
             (seal.heightAnchor.constraint(equalToConstant: 0), Seal.size),
+            (background.bottomAnchor.constraint(equalTo: pill.topAnchor), PanelController.cornerInset + 4 + 2 * size + 12),
+            (pill.widthAnchor.constraint(equalToConstant: 0), PanelController.pillWidth),
+            (pinButton.widthAnchor.constraint(equalToConstant: 0), size),
+            (pinButton.heightAnchor.constraint(equalToConstant: 0), size),
+            (closeButton.widthAnchor.constraint(equalToConstant: 0), size),
+            (closeButton.heightAnchor.constraint(equalToConstant: 0), size),
         ]
-        sealConstraints = scaled.map { (constraint: $0.0, base: $0.1) }
-        for (constraint, base) in sealConstraints { constraint.constant = UIScale.pt(base) }
+        scaledConstraints = scaled.map { (constraint: $0.0, base: $0.1) }
+        for (constraint, base) in scaledConstraints { constraint.constant = UIScale.pt(base) }
         let sealCenter = seal.centerYAnchor.constraint(equalTo: background.topAnchor, constant: 60)
         self.sealCenter = sealCenter
-        NSLayoutConstraint.activate(sealConstraints.map(\.constraint) + [
+        NSLayoutConstraint.activate(scaledConstraints.map(\.constraint) + [
             background.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             background.topAnchor.constraint(equalTo: container.topAnchor),
             background.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             sealCenter,
+            pillHeight,
+            pill.centerXAnchor.constraint(equalTo: seal.centerXAnchor),
+            buttons.centerXAnchor.constraint(equalTo: pill.centerXAnchor),
+            buttons.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
         ])
         panel.contentView = container
         return panel
