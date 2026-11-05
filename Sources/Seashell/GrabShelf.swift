@@ -184,14 +184,16 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
     }
 
     /// While it's up (pinned, that can be a while), items stashed meanwhile
-    /// show; its top edge stays put as it grows or shrinks.
+    /// show; its top edge stays put as it grows or shrinks, as far as the
+    /// screen allows (it may have been moved to the bottom of it).
     private func refresh() {
         let recent = store.recentItems(limit: Self.maxItems)
         guard isShowing, recent != items else { return }
         items = recent
-        let top = panel.frame.maxY
+        let old = panel.frame
         let size = fill()
-        panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: top - size.height))
+        panel.setFrameOrigin(Self.onScreen(NSPoint(x: old.minX, y: old.maxY - size.height), size: size,
+                                           near: NSPoint(x: old.midX, y: old.maxY)))
     }
 
     private static func size(for count: Int) -> NSSize {
@@ -210,12 +212,17 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
     /// Above the pointer, like the drop shelf; kept on screen.
     private static func origin(near point: NSPoint, size: NSSize) -> NSPoint {
         var origin = NSPoint(x: point.x - size.width / 2, y: point.y + 30)
-        guard let screen = NSScreen.containing(point) else { return origin }
-        let visible = screen.visibleFrame
-        if origin.y + size.height > visible.maxY - 8 { origin.y = point.y - 30 - size.height }
-        origin.x = min(max(origin.x, visible.minX + 8), visible.maxX - size.width - 8)
-        origin.y = min(max(origin.y, visible.minY + 8), visible.maxY - size.height - 8)
-        return origin
+        if let visible = NSScreen.containing(point)?.visibleFrame, origin.y + size.height > visible.maxY - 8 {
+            origin.y = point.y - 30 - size.height
+        }
+        return onScreen(origin, size: size, near: point)
+    }
+
+    /// `origin`, moved as little as it takes for the shelf to fit on the screen holding `point`.
+    private static func onScreen(_ origin: NSPoint, size: NSSize, near point: NSPoint) -> NSPoint {
+        guard let visible = NSScreen.containing(point)?.visibleFrame else { return origin }
+        return NSPoint(x: min(max(origin.x, visible.minX + 8), visible.maxX - size.width - 8),
+                       y: min(max(origin.y, visible.minY + 8), visible.maxY - size.height - 8))
     }
 
     // MARK: Going away
@@ -307,9 +314,7 @@ final class GrabShelf: NSObject, NSCollectionViewDataSource, NSCollectionViewDel
         isDragging = true
         let names = indexPaths.sorted().map { items[$0.item].name }.joined(separator: ", ")
         Log.info("Grab shelf: dragging out \(names)")
-        for indexPath in indexPaths where items[indexPath.item].cloud == .cloudOnly {
-            try? CloudStatus.startDownloading(items[indexPath.item].url)
-        }
+        ItemActions.startDownloading(indexPaths.map { items[$0.item] })
     }
 
     func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession,

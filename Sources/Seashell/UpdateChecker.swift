@@ -1,7 +1,7 @@
 import AppKit
 import SeashellCore
 
-/// "Check for Updates…" in the menu bar menu: asks GitHub for the newest
+/// "Check for Updates…" in About Seashell: asks GitHub for the newest
 /// release when you choose it, and offers its page if it's newer than this copy.
 @MainActor
 enum UpdateChecker {

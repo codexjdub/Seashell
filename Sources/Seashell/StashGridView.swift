@@ -22,6 +22,15 @@ final class StashGridView: NSCollectionView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    /// Reloads to show `items`, keeping selected whichever items were selected
+    /// before (`old`, what it showed until now): reloading clears the selection.
+    func reload(showing items: [StashItem], after old: [StashItem]) {
+        let selected = Set(selectionIndexPaths.compactMap { old.indices.contains($0.item) ? old[$0.item].url : nil })
+        reloadData()
+        let again = items.indices.filter { selected.contains(items[$0].url) }.map { IndexPath(item: $0, section: 0) }
+        selectItems(at: Set(again), scrollPosition: [])
+    }
+
     /// The grab shelf is never the key window: the first click must start a drag.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -404,6 +413,10 @@ final class ThumbnailLoader {
 @MainActor
 private final class Loads<Value: AnyObject> {
     private let cache = NSCache<NSString, Value>()
+    /// Keys whose load brought nothing (text only in iCloud, a file Quick Look
+    /// can't draw): not tried again on every reload. A download or an edit
+    /// changes the key, and that one is tried.
+    private var failed: Set<String> = []
     private var waiting: [String: [@MainActor (Value?) -> Void]] = [:]
 
     func cached(_ key: String) -> Value? {
@@ -411,10 +424,10 @@ private final class Loads<Value: AnyObject> {
     }
 
     /// Calls `completion` with what `load` brings (nil if it couldn't), unless
-    /// it's cached already.
+    /// it's cached already or brought nothing before.
     func load(_ key: String, completion: @escaping @MainActor (Value?) -> Void,
               _ load: @escaping @MainActor () async -> Value?) {
-        guard cached(key) == nil else { return }
+        guard cached(key) == nil, !failed.contains(key) else { return }
         guard waiting[key] == nil else {
             waiting[key]?.append(completion)
             return
@@ -422,7 +435,11 @@ private final class Loads<Value: AnyObject> {
         waiting[key] = [completion]
         Task {
             let value = await load()
-            if let value { cache.setObject(value, forKey: key as NSString) }
+            if let value {
+                cache.setObject(value, forKey: key as NSString)
+            } else {
+                failed.insert(key)
+            }
             waiting.removeValue(forKey: key)?.forEach { $0(value) }
         }
     }

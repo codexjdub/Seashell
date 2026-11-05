@@ -88,4 +88,16 @@ struct ArrivalsTests {
         writes.note(url, now: .now.addingTimeInterval(-601))
         #expect(!writes.claim(url), "too long ago to be the one")
     }
+
+    @Test func aWriteThatFailedIsntRemembered() throws {
+        let writes = LocalWrites()
+        let mover = FileMover(trash: { _ in }, localWrites: writes)
+        let gone = main.url.appending(path: "gone.txt")
+        #expect(throws: (any Error).self) { try mover.rename(gone, to: "renamed.txt") }
+        // Else an item of that name saved from an iPhone within ten minutes would count as Seashell's own.
+        #expect(!writes.claim(main.url.appending(path: "renamed.txt")))
+
+        let renamed = try mover.rename(main.url.appending(path: "already here.txt"), to: "kept.txt")
+        #expect(writes.claim(renamed))
+    }
 }

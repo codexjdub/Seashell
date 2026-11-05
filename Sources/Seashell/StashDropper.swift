@@ -286,30 +286,39 @@ final class StashDropper {
     /// ⌘Z: takes back the latest drop, paste or move between shelves, whichever
     /// shelf it went to. One still landing (a big copy, a promised file) is taken
     /// back once it has landed, or after a minute what has (the rest, landing
-    /// later, is the next ⌘Z's). False if there was nothing left to take back,
-    /// or an earlier ⌘Z is still waiting.
+    /// later, is the next ⌘Z's). A drop that lands with nothing (a promised
+    /// file that never came) has nothing to take back, so the one before it
+    /// goes instead. False if there was nothing left to take back, or an
+    /// earlier ⌘Z is still waiting.
     func undoLast() async -> Bool {
-        guard !isUndoing, let step = history.popLatest() else { return false }
+        guard !isUndoing else { return false }
         isUndoing = true
         defer { isUndoing = false }
-        if step.isLanding {
-            Log.info("Undo: waiting for the last drop to land")
-            if !(await step.untilLanded(within: Self.landingWait)) {
-                Log.info("Undo: the drop hasn’t finished landing after \(Self.landingWait); taking back what has")
+        while let step = history.popLatest() {
+            if step.isLanding {
+                Log.info("Undo: waiting for the last drop to land")
+                if !(await step.untilLanded(within: Self.landingWait)) {
+                    Log.info("Undo: the drop hasn’t finished landing after \(Self.landingWait); taking back what has")
+                }
             }
+            let changes = step.takeBack()
+            guard !changes.isEmpty else {
+                Log.info("Undo: the last drop landed with nothing; taking back the one before")
+                continue
+            }
+            // Items since moved, renamed or trashed are left alone.
+            let present = changes.filter { FileManager.default.fileExists(atPath: $0.item.path(percentEncoded: false)) }
+            Log.info("Undo: \(present.count) of \(changes.count) \(changes.count == 1 ? "item" : "items") from the last drop")
+            guard !present.isEmpty else { return false }
+            let mover = self.mover
+            let newestFirst = Array(present.reversed())
+            let results = await Task.detached { mover.undo(newestFirst) }.value
+            for (change, result) in zip(newestFirst, results) {
+                if case .failure(let error) = result { report("Couldn’t undo “\(change.item.lastPathComponent)”", error) }
+            }
+            return true
         }
-        let changes = step.takeBack()
-        // Items since moved, renamed or trashed are left alone.
-        let present = changes.filter { FileManager.default.fileExists(atPath: $0.item.path(percentEncoded: false)) }
-        Log.info("Undo: \(present.count) of \(changes.count) \(changes.count == 1 ? "item" : "items") from the last drop")
-        guard !present.isEmpty else { return false }
-        let mover = self.mover
-        let newestFirst = Array(present.reversed())
-        let results = await Task.detached { mover.undo(newestFirst) }.value
-        for (change, result) in zip(newestFirst, results) {
-            if case .failure(let error) = result { report("Couldn’t undo “\(change.item.lastPathComponent)”", error) }
-        }
-        return true
+        return false
     }
 
     /// Once a promised file has moved into a shelf (or couldn't), what's left of

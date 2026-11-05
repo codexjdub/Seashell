@@ -42,6 +42,26 @@ struct WatchingTests {
         #expect(store.items(in: main).map(\.name) == ["a.txt"])
     }
 
+    @Test func reloadingShelvesReadsItemsOnlyOfNewOnes() throws {
+        let main = Shelf(url: try folder.folder("Stash/Main"))
+        let stash = folder.root.appending(path: "Stash")
+        let store = StashStore(library: StashLibrary(stash: stash, mover: try folder.mover()))
+        try folder.file("Stash/Main/a.txt")  // not read yet
+        let work = try store.library.createShelf(named: "Work")
+        try folder.file("Stash/Work/b.txt")
+
+        store.reloadShelves()
+        #expect(store.shelves.map(\.name) == ["Main", "Work"])
+        #expect(store.items(in: work).map(\.name) == ["b.txt"])
+        #expect(store.items(in: main).isEmpty, "a shelf already known keeps its items until it's re-read")
+
+        let projects = try store.library.renameShelf(work, to: "Projects")
+        store.reloadShelves()
+        #expect(store.shelves.map(\.name) == ["Main", "Projects"])
+        #expect(store.items(in: projects).map(\.name) == ["b.txt"], "renamed: new to the list, so read")
+        #expect(store.arrivals.isEmpty)
+    }
+
     @Test func aNewShelfShowsUpWhenStashChanges() async throws {
         _ = try folder.folder("Stash/Main")
         let stash = folder.root.appending(path: "Stash")

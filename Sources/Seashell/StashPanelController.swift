@@ -171,11 +171,9 @@ final class StashPanelController: NSViewController {
         let newItems = currentShelf.map { store.items(in: $0) } ?? []
         emptyLabel.isHidden = !newItems.isEmpty
         guard newItems != items else { return }
-        let selected = Set(selectedItems.map(\.url))
+        let old = items
         items = newItems
-        grid.reloadData()
-        let reselect = items.indices.filter { selected.contains(items[$0].url) }.map { IndexPath(item: $0, section: 0) }
-        grid.selectItems(at: Set(reselect), scrollPosition: [])
+        grid.reload(showing: items, after: old)
     }
 
     /// Shows the shelf called `name`, if there is one.
@@ -231,7 +229,7 @@ final class StashPanelController: NSViewController {
         note("tab “\(name)” moved \(after ? "after" : "before") “\(target.name)”")
         do {
             try store.library.moveShelf(dragged, to: index)
-            store.reload()
+            store.reloadShelves()
         } catch {
             Alerts.showError("Couldn’t move “\(name)”", error)
         }
@@ -258,7 +256,7 @@ final class StashPanelController: NSViewController {
         guard let name = Alerts.askForName("New shelf", confirm: "Create") else { return note("new shelf cancelled") }
         do {
             let shelf = try store.library.createShelf(named: name)
-            store.reload()
+            store.reloadShelves()
             show(shelfNamed: shelf.name)
         } catch {
             Alerts.showError("Couldn’t create the shelf", error)
@@ -275,7 +273,7 @@ final class StashPanelController: NSViewController {
             let renamed = try store.library.renameShelf(shelf, to: newName)
             if currentShelfName == name { currentShelfName = renamed.name }
             onRenamed?(name, renamed.name)
-            store.reload()
+            store.reloadShelves()
         } catch {
             Alerts.showError("Couldn’t rename “\(name)”", error)
         }
@@ -292,7 +290,7 @@ final class StashPanelController: NSViewController {
         }
         do {
             try store.library.deleteShelf(shelf)
-            store.reload()
+            store.reloadShelves()
         } catch {
             Alerts.showError("Couldn’t delete “\(name)”", error)
         }
@@ -347,68 +345,23 @@ final class StashPanelController: NSViewController {
     private func itemMenu() -> NSMenu {
         let selection = selectedItems
         note("right-click menu for \(count(selection.count))")
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        func add(_ title: String, _ action: Selector, enabled: Bool = true) {
-            let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
-            item.target = self
-            item.isEnabled = enabled
-        }
-        add("Open", #selector(openSelection))
-        add("Quick Look", #selector(quickLookSelection))
-        add("Show in Finder", #selector(showSelectionInFinder))
-        menu.addItem(.separator())
-        add("Copy", #selector(copySelection))
-        if selection.contains(where: TextRecognition.canRead) { add("Copy Text", #selector(copyTextFromSelection)) }
-        if ReadAloud.shared.isReading {
-            add("Stop Reading", #selector(stopReading))
-        } else if selection.contains(where: ItemActions.canReadAloud) {
-            add("Read Aloud", #selector(readAloudSelection))
-        }
-        add("Paste", #selector(pasteFromMenu), enabled: ItemActions.canPaste)
-        add("Rename…", #selector(renameSelection), enabled: selection.count == 1)
-        menu.addItem(.separator())
-        add("Put Back", #selector(putBackSelection), enabled: !selection.isEmpty && selection.allSatisfy { $0.origin != nil })
-        add("Move to Trash", #selector(deleteSelection))
-        return menu
+        return ItemActions.menu(for: selection, note: { [weak self] in self?.note($0) }, ItemActions.MenuHandlers(
+            open: { [weak self] in self?.openSelection() },
+            quickLook: { [weak self] in self?.togglePreview() },
+            paste: { [weak self] in self?.pasteIntoShelf() },
+            rename: { [weak self] item in
+                guard let self else { return }
+                note("Rename… \(item.name)")
+                ItemActions.rename(item, with: mover)
+                store.reload(around: [item.url])
+            },
+            putBack: { [weak self] items in self?.perform("put back", items) { $0.putBack($1) } },
+            moveToTrash: { [weak self] items in self?.perform("move to the Trash", items) { $0.delete($1) } }))
     }
 
-    @objc private func openSelection() {
+    private func openSelection() {
         note("Open \(count(selectedItems.count))")
         selectedItems.forEach { NSWorkspace.shared.open($0.url) }
-    }
-
-    @objc private func quickLookSelection() {
-        togglePreview()
-    }
-
-    @objc private func showSelectionInFinder() {
-        note("Show in Finder \(count(selectedItems.count))")
-        NSWorkspace.shared.activateFileViewerSelecting(selectedItems.map(\.url))
-    }
-
-    @objc private func copySelection() {
-        note("Copy \(count(selectedItems.count))")
-        ItemActions.copy(selectedItems)
-    }
-
-    @objc private func readAloudSelection() {
-        note("Read Aloud \(count(selectedItems.count))")
-        ItemActions.readAloud(selectedItems)
-    }
-
-    @objc private func stopReading() {
-        note("Stop Reading")
-        ReadAloud.shared.stop()
-    }
-
-    @objc private func copyTextFromSelection() {
-        note("Copy Text \(count(selectedItems.count))")
-        ItemActions.copyText(selectedItems)
-    }
-
-    @objc private func pasteFromMenu() {
-        pasteIntoShelf()
     }
 
     private func pasteIntoShelf() {
@@ -434,21 +387,8 @@ final class StashPanelController: NSViewController {
         }
     }
 
-    @objc private func renameSelection() {
-        guard let item = selectedItems.first else { return }
-        note("Rename… \(item.name)")
-        ItemActions.rename(item, with: mover)
-        store.reload(around: [item.url])
-    }
-
-    @objc private func putBackSelection() {
-        note("Put Back \(count(selectedItems.count))")
-        perform("put back", selectedItems.filter { $0.origin != nil }.map(\.url)) { $0.putBack($1) }
-    }
-
-    @objc private func deleteSelection() {
-        note("Move to Trash \(count(selectedItems.count))")
-        perform("move to the Trash", selectedItems.map(\.url)) { $0.delete($1) }
+    private func deleteSelection() {
+        perform("move to the Trash", selectedItems) { $0.delete($1) }
     }
 
     private func note(_ message: String) {
@@ -459,18 +399,12 @@ final class StashPanelController: NSViewController {
         "\(n) \(n == 1 ? "item" : "items")"
     }
 
-    /// Runs a file operation on the items off the main thread, reporting failures.
-    private func perform<T: Sendable>(_ verb: String, _ urls: [URL],
+    /// Notes it in the log, then runs a file operation on `items` (see ItemActions.perform).
+    private func perform<T: Sendable>(_ verb: String, _ items: [StashItem],
                                       _ operation: @escaping @Sendable (FileMover, [URL]) -> [Result<T, any Error>]) {
-        guard !urls.isEmpty else { return }
-        let mover = self.mover
-        Task {
-            let results = await Task.detached { operation(mover, urls) }.value
-            for (url, result) in zip(urls, results) {
-                if case .failure(let error) = result { Alerts.showError("Couldn’t \(verb) “\(url.lastPathComponent)”", error) }
-            }
-            store.reload(around: urls)
-        }
+        guard !items.isEmpty else { return }
+        note("\(verb): \(count(items.count))")
+        ItemActions.perform(verb, items.map(\.url), with: mover, store: store, operation)
     }
 }
 
@@ -511,10 +445,7 @@ extension StashPanelController: NSCollectionViewDataSource, NSCollectionViewDele
         draggedURLs = indexPaths.sorted().map { items[$0.item].url }
         let kinds = indexPaths.sorted().map { "\(items[$0.item].kind)" }.joined(separator: ", ")
         note("dragging out \(count(indexPaths.count)) (\(kinds))")
-        // Files only in iCloud start downloading now, so the copy lands sooner.
-        for indexPath in indexPaths where items[indexPath.item].cloud == .cloudOnly {
-            try? CloudStatus.startDownloading(items[indexPath.item].url)
-        }
+        ItemActions.startDownloading(indexPaths.map { items[$0.item] })
     }
 
     func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession,

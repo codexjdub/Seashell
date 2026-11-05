@@ -93,4 +93,24 @@ struct NoteSessionTests {
         #expect(renamed?.url.lastPathComponent == "Trip plan.md")
         #expect(session.note == renamed)
     }
+
+    @Test func opensANoteWithItsText() throws {
+        let note = try library.create(text: "Groceries\nmilk")
+        #expect(try session.open(note) == "Groceries\nmilk")
+        #expect(session.note == note)
+        #expect(try session.open(nil) == "")
+        #expect(session.note == nil)
+    }
+
+    @Test func aNoteThatCantBeReadIsntHeld() throws {
+        let earlier = try library.create(text: "Earlier")
+        _ = try session.open(earlier)
+        // Saved by another app in UTF-16: shown blank, it would look emptied and go to the Trash on leaving.
+        let wide = library.folder.appending(path: "Wide.md")
+        try #require("Wide\nnote".data(using: .utf16)).write(to: wide)
+        let note = try #require(library.note(at: wide))
+        #expect(throws: (any Error).self) { try session.open(note) }
+        #expect(session.note == nil, "not this one, nor the one before")
+        #expect(exists(wide))
+    }
 }

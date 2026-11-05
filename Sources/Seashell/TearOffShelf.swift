@@ -171,8 +171,10 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
     private func refresh() {
         let newItems = shelf.map { store.items(in: $0) } ?? []
         guard newItems != items else { return }
+        let old = items
         items = newItems
-        grid.reloadData()
+        grid.reload(showing: items, after: old)
+        previewFollowsSelection()
     }
 
     private func applyTextSize() {
@@ -234,7 +236,21 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
     }
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
-        if preview.isShowing, let item = selectedItems.first { preview.update(item.url) }
+        previewFollowsSelection()
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) {
+        previewFollowsSelection()
+    }
+
+    /// An open preview follows the selection, and closes when nothing is selected.
+    private func previewFollowsSelection() {
+        guard preview.isShowing else { return }
+        if let item = selectedItems.first {
+            preview.update(item.url)
+        } else {
+            preview.hide()
+        }
     }
 
     func collectionView(_ collectionView: NSCollectionView, canDragItemsAt indexPaths: Set<IndexPath>, with event: NSEvent) -> Bool {
@@ -247,9 +263,7 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
 
     func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession,
                         willBeginAt screenPoint: NSPoint, forItemsAt indexPaths: Set<IndexPath>) {
-        for indexPath in indexPaths where items[indexPath.item].cloud == .cloudOnly {
-            try? CloudStatus.startDownloading(items[indexPath.item].url)
-        }
+        ItemActions.startDownloading(indexPaths.map { items[$0.item] })
     }
 
     func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession,
@@ -288,39 +302,18 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
     }
 
     private func itemMenu() -> NSMenu {
-        let selection = selectedItems
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        func add(_ title: String, enabled: Bool = true, _ action: @escaping @MainActor () -> Void) {
-            let item = menu.addItem(withTitle: title, action: #selector(MenuAction.run), keyEquivalent: "")
-            let handler = MenuAction(action)
-            item.target = handler
-            item.representedObject = handler  // keeps it alive while the menu is up
-            item.isEnabled = enabled
-        }
-        add("Open") { [weak self] in self?.openSelection() }
-        add("Quick Look") { [weak self] in self?.togglePreview() }
-        add("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(selection.map(\.url)) }
-        menu.addItem(.separator())
-        add("Copy") { ItemActions.copy(selection) }
-        if selection.contains(where: TextRecognition.canRead) { add("Copy Text") { ItemActions.copyText(selection) } }
-        if ReadAloud.shared.isReading {
-            add("Stop Reading") { ReadAloud.shared.stop() }
-        } else if selection.contains(where: ItemActions.canReadAloud) {
-            add("Read Aloud") { ItemActions.readAloud(selection) }
-        }
-        add("Paste", enabled: ItemActions.canPaste) { [weak self] in self?.paste() }
-        add("Rename…", enabled: selection.count == 1) { [weak self] in
-            guard let self, let item = selection.first else { return }
-            ItemActions.rename(item, with: self.mover)
-            self.store.reload(around: [item.url])
-        }
-        menu.addItem(.separator())
-        add("Put Back", enabled: !selection.isEmpty && selection.allSatisfy { $0.origin != nil }) { [weak self] in
-            self?.perform("put back", selection.filter { $0.origin != nil }.map(\.url)) { $0.putBack($1) }
-        }
-        add("Move to Trash") { [weak self] in self?.deleteSelection() }
-        return menu
+        ItemActions.menu(for: selectedItems, note: { [weak self] in self?.note($0) }, ItemActions.MenuHandlers(
+            open: { [weak self] in self?.openSelection() },
+            quickLook: { [weak self] in self?.togglePreview() },
+            paste: { [weak self] in self?.paste() },
+            rename: { [weak self] item in
+                guard let self else { return }
+                note("Rename… \(item.name)")
+                ItemActions.rename(item, with: mover)
+                store.reload(around: [item.url])
+            },
+            putBack: { [weak self] items in self?.perform("put back", items) { $0.putBack($1) } },
+            moveToTrash: { [weak self] items in self?.perform("move to the Trash", items) { $0.delete($1) } }))
     }
 
     private func paste() {
@@ -347,22 +340,15 @@ final class TearOffShelf: NSObject, NSCollectionViewDataSource, NSCollectionView
     }
 
     private func deleteSelection() {
-        perform("move to the Trash", selectedItems.map(\.url)) { $0.delete($1) }
+        perform("move to the Trash", selectedItems) { $0.delete($1) }
     }
 
-    /// Runs a file operation on the items off the main thread, reporting failures.
-    private func perform<T: Sendable>(_ verb: String, _ urls: [URL],
+    /// Notes it in the log, then runs a file operation on `items` (see ItemActions.perform).
+    private func perform<T: Sendable>(_ verb: String, _ items: [StashItem],
                                       _ operation: @escaping @Sendable (FileMover, [URL]) -> [Result<T, any Error>]) {
-        guard !urls.isEmpty else { return }
-        note("\(verb): \(urls.count) item\(urls.count == 1 ? "" : "s")")
-        let mover = self.mover
-        Task {
-            let results = await Task.detached { operation(mover, urls) }.value
-            for (url, result) in zip(urls, results) {
-                if case .failure(let error) = result { Alerts.showError("Couldn’t \(verb) “\(url.lastPathComponent)”", error) }
-            }
-            store.reload(around: urls)
-        }
+        guard !items.isEmpty else { return }
+        note("\(verb): \(items.count) item\(items.count == 1 ? "" : "s")")
+        ItemActions.perform(verb, items.map(\.url), with: mover, store: store, operation)
     }
 
     private func note(_ message: String) {
@@ -492,19 +478,5 @@ final class TearOffWindow: NSPanel {
     /// ⌘+ / ⌘− / ⌘0 set the text size, as in the panel (EditShortcuts).
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         EditShortcuts.perform(event, from: self) || super.performKeyEquivalent(with: event)
-    }
-}
-
-/// A menu item's action as a closure.
-@MainActor
-final class MenuAction: NSObject {
-    private let action: @MainActor () -> Void
-
-    init(_ action: @escaping @MainActor () -> Void) {
-        self.action = action
-    }
-
-    @objc func run() {
-        action()
     }
 }

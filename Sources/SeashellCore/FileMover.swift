@@ -74,8 +74,7 @@ public struct FileMover: Sendable {
             return source
         }
         let destination = FileNaming.uniqueDestination(for: source.lastPathComponent, in: shelf, isDirectory: isDirectory(source))
-        localWrites.note(destination)
-        try transfer(source, to: destination, measured: measured)
+        try writing(destination) { try transfer(source, to: destination, measured: measured) }
         let origin = rememberOrigin ? source.deletingLastPathComponent().path(percentEncoded: false) : nil
         edits.change(shelf) { $0.add(destination.lastPathComponent, origin: origin) }
         Log.info("Stashed \(source.lastPathComponent) → \(shelf.lastPathComponent)/\(destination.lastPathComponent)")
@@ -97,8 +96,7 @@ public struct FileMover: Sendable {
     private func stashCopy(_ source: URL, into shelf: URL, edits: ManifestEdits) throws -> URL {
         guard exists(source) else { throw FileMoverError.missing(source.lastPathComponent) }
         let destination = FileNaming.uniqueDestination(for: source.lastPathComponent, in: shelf, isDirectory: isDirectory(source))
-        localWrites.note(destination)
-        try Coordinated.read(source) { try FileManager.default.copyItem(at: $0, to: destination) }
+        try writing(destination) { try Coordinated.read(source) { try FileManager.default.copyItem(at: $0, to: destination) } }
         edits.change(shelf) { $0.add(destination.lastPathComponent, origin: nil) }
         Log.info("Copied \(source.lastPathComponent) → \(shelf.lastPathComponent)/\(destination.lastPathComponent)")
         return destination
@@ -138,8 +136,7 @@ public struct FileMover: Sendable {
         let from = item.deletingLastPathComponent()
         let origin = edits.origin(of: item)
         let destination = FileNaming.uniqueDestination(for: name ?? item.lastPathComponent, in: shelf, isDirectory: isDirectory(item))
-        localWrites.note(destination)
-        try transfer(item, to: destination)
+        try writing(destination) { try transfer(item, to: destination) }
         edits.change(from) { $0.remove(item.lastPathComponent) }
         edits.change(shelf) { $0.add(destination.lastPathComponent, origin: origin) }
         Log.info("Moved \(item.lastPathComponent) → \(shelf.lastPathComponent)")
@@ -157,8 +154,7 @@ public struct FileMover: Sendable {
         let destination = shelf.appending(path: cleaned, directoryHint: isDirectory(item) ? .isDirectory : .notDirectory)
         // Another item already has that name (a change of case alone is fine).
         if exists(destination), cleaned.lowercased() != current.lowercased() { throw FileMoverError.nameTaken(cleaned) }
-        localWrites.note(destination)
-        try Coordinated.move(item, to: destination)
+        try writing(destination) { try Coordinated.move(item, to: destination) }
         try ShelfManifest.update(in: shelf) { $0.rename(current, to: cleaned) }
         Log.info("Renamed \(current) → \(cleaned)")
         return destination
@@ -232,6 +228,19 @@ public struct FileMover: Sendable {
 
     // MARK: Helpers
 
+    /// Notes `destination` as Seashell's own (see LocalWrites) before `write`
+    /// puts it there, so a re-read meanwhile doesn't count it as arrived; if
+    /// the write fails, so does the note.
+    private func writing(_ destination: URL, _ write: () throws -> Void) throws {
+        localWrites.note(destination)
+        do {
+            try write()
+        } catch {
+            localWrites.forget(destination)
+            throw error
+        }
+    }
+
     /// One operation, its manifest changes written when it's done.
     private func once<T>(_ operation: (ManifestEdits) throws -> T) throws -> T {
         let edits = ManifestEdits()
@@ -300,8 +309,7 @@ public struct FileMover: Sendable {
 
     private func write(_ data: Data, named name: String, into shelf: URL) throws -> URL {
         let destination = FileNaming.uniqueDestination(for: name, in: shelf, isDirectory: false)
-        localWrites.note(destination)
-        try Coordinated.write(destination) { try data.write(to: $0, options: .withoutOverwriting) }
+        try writing(destination) { try Coordinated.write(destination) { try data.write(to: $0, options: .withoutOverwriting) } }
         try ShelfManifest.update(in: shelf) { $0.add(destination.lastPathComponent, origin: nil) }
         Log.info("Stashed \(destination.lastPathComponent) → \(shelf.lastPathComponent)")
         return destination

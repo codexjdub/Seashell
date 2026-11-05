@@ -40,6 +40,20 @@ struct ItemContentTests {
         #expect(ItemContent.text(of: big) == nil)
     }
 
+    @Test func utf16TextIsReadByItsByteOrderMark() throws {
+        let file = folder.root.appending(path: "wide.txt")
+        try #require("Héllo, wörld".data(using: .utf16)).write(to: file)  // with its byte order mark
+        #expect(ItemContent.text(of: file) == "Héllo, wörld")
+        #expect(ItemContent.preview(of: file) == "Héllo, wörld")
+    }
+
+    @Test func textInAnotherEncodingIsLeftAsAFile() throws {
+        // UTF-16 without a mark would take these bytes as "䍡曩⁡甠污楴Ⱐ捲攠扲ﭬ".
+        let file = folder.root.appending(path: "latin1.txt")
+        try #require("Café au lait, crème brûlée!".data(using: .isoLatin1)).write(to: file)
+        #expect(ItemContent.text(of: file) == nil)
+    }
+
     @Test func previewOfShortText() throws {
         let note = try folder.file("note.txt", "\n  Buy milk\nand eggs  \n")
         #expect(ItemContent.preview(of: note) == "Buy milk\nand eggs")

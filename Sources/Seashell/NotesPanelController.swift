@@ -186,8 +186,8 @@ final class NotesPanelController: NSViewController {
         case .changed:
             note("\(shown) changed elsewhere; showing the new version")
         case .gone:
-            note("\(shown) was renamed or deleted elsewhere")
-            editor.load(nil)
+            note("\(shown) was renamed or deleted elsewhere, or can’t be read now")
+            editor.clear()
         }
         notes = newNotes
         reloadList()
@@ -239,14 +239,16 @@ final class NotesPanelController: NSViewController {
         }
         guard leaveCurrent() else { return selectCurrentRow() }
         guard let fresh = store.library.note(at: note.url) else { return }
-        load(fresh)
-        lastNoteName = fresh.url.lastPathComponent
-        selectCurrentRow()
-    }
-
-    private func load(_ note: Note) {
-        editor.load(note)
+        do {
+            try editor.load(fresh)
+            lastNoteName = fresh.url.lastPathComponent
+        } catch {
+            // Left as it is: shown blank, leaving it would send it to the Trash.
+            lastNoteName = nil
+            Alerts.showError("Couldn’t open “\(fresh.title)”", error)
+        }
         updatePlaceholder()
+        selectCurrentRow()
     }
 
     /// Puts the keyboard in the editor.
@@ -268,7 +270,7 @@ final class NotesPanelController: NSViewController {
         note("new note")
         guard leaveCurrent() else { return }
         isDraft = true
-        editor.load(nil)
+        editor.clear()
         reloadList()
         updatePlaceholder()
         focusEditor()
@@ -293,7 +295,7 @@ final class NotesPanelController: NSViewController {
     private func leaveCurrent() -> Bool {
         guard editor.saveNow() else { return false }
         defer {
-            editor.load(nil)
+            editor.clear()
             reloadList()
         }
         if isDraft {
@@ -498,7 +500,7 @@ final class NotesPanelController: NSViewController {
     private func discardDraft() {
         note("new note discarded")
         isDraft = false
-        editor.load(nil)  // with nothing waiting to be saved
+        editor.clear()  // with nothing waiting to be saved
         reloadList()
         updatePlaceholder()
     }
@@ -510,7 +512,7 @@ final class NotesPanelController: NSViewController {
         guard windows.closeForTrash(target) else { return note("\(target.title) stays: its window couldn’t save") }
         if target.url.lastPathComponent == editor.note?.url.lastPathComponent {
             // Don't save or rename what's about to go: the editor lets go of it unsaved.
-            editor.load(nil)
+            editor.clear()
             lastNoteName = nil
         }
         do {

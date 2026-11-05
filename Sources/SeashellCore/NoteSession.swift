@@ -20,6 +20,17 @@ public final class NoteSession {
         hasUnsavedEdits = false
     }
 
+    /// Reads `note` and edits it from now on, with nothing waiting; nil for a
+    /// new note, with no text. If it can't be read (only in iCloud while
+    /// offline, say, or not UTF-8), this throws, holding no note: shown blank,
+    /// it would look emptied, and leaving an emptied note sends it to the Trash.
+    public func open(_ note: Note?) throws -> String {
+        start(nil)
+        let text = try note.map(library.read) ?? ""
+        start(note)
+        return text
+    }
+
     /// The text changed in the editor.
     public func edited() {
         hasUnsavedEdits = true

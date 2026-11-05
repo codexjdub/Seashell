@@ -30,12 +30,27 @@ final class NoteEditor {
 
     /// Shows `note`, or nothing for a new note, with the cursor where it was (as
     /// far as the text goes) and ⌘Z starting afresh: it mustn't bring back
-    /// another note's words.
-    func load(_ note: Note?) {
+    /// another note's words. A note that can't be read throws, leaving the
+    /// editor empty and holding no note (see NoteSession.open).
+    func load(_ note: Note?) throws {
         saveTask?.cancel()
-        let text = note.flatMap { try? store.library.read($0) } ?? ""
         let location = textView.selectedRange().location
-        session.start(note)
+        let text: String
+        do {
+            text = try session.open(note)
+        } catch {
+            show("", cursorAt: location)
+            throw error
+        }
+        show(text, cursorAt: location)
+    }
+
+    /// Shows nothing, holding no note: ready for a new one.
+    func clear() {
+        try? load(nil)  // nothing to read, so nothing to fail
+    }
+
+    private func show(_ text: String, cursorAt location: Int) {
         textView.string = text
         textView.setSelectedRange(NSRange(location: min(location, (text as NSString).length), length: 0))
         textView.undoManager?.removeAllActions()
@@ -88,10 +103,17 @@ final class NoteEditor {
     }
 
     /// What the folder's latest notes mean for this one (see NoteSession.follow).
-    /// A version changed elsewhere is shown here; `.gone` is the caller's to handle.
+    /// A version changed elsewhere is shown here; `.gone` is the caller's to
+    /// handle, and so is one that can't be read, which the editor lets go of.
     func follow(_ notes: [Note]) -> NoteSession.Change {
         let change = session.follow(notes)
-        if case .changed(let onDisk) = change { load(onDisk) }
+        guard case .changed(let onDisk) = change else { return change }
+        do {
+            try load(onDisk)
+        } catch {
+            Log.error("Couldn’t read \(onDisk.title) as changed elsewhere; letting go of it: \(error.localizedDescription)")
+            return .gone
+        }
         return change
     }
 }

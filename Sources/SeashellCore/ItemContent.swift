@@ -21,7 +21,26 @@ public enum ItemContent {
         guard let size = try? FileSize.of(url), size <= maxTextBytes, !cloudOnly(),
               let data = try? Coordinated.read(url, { try Data(contentsOf: $0) })
         else { return nil }
-        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
+        return isUTF16(data) ? String(data: data, encoding: .utf16) : String(data: data, encoding: .utf8)
+    }
+
+    /// UTF-16 is told by the byte order mark it starts with. Without one it
+    /// would "decode" almost any bytes (a Latin-1 file comes out as Chinese),
+    /// so such a file counts as not text and drags out as the file.
+    private static func isUTF16(_ data: Data) -> Bool {
+        data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF])
+    }
+
+    /// The text at the start of a file, read the same way; `data` may end
+    /// partway through a character.
+    private static func partialText(_ data: Data) -> String {
+        guard isUTF16(data) else { return String(decoding: data, as: UTF8.self) }
+        let littleEndian = data.first == 0xFF
+        let bytes = Array(data.dropFirst(2))
+        let units = stride(from: 0, to: bytes.count - 1, by: 2).map { index in
+            littleEndian ? UInt16(bytes[index]) | UInt16(bytes[index + 1]) << 8 : UInt16(bytes[index]) << 8 | UInt16(bytes[index + 1])
+        }
+        return String(decoding: units, as: UTF16.self)
     }
 
     /// The start of a text item, for showing on its card: reads only the first
@@ -34,7 +53,7 @@ public enum ItemContent {
                   return try handle.read(upToCount: maxCharacters * 4) ?? Data()
               })
         else { return nil }
-        let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = partialText(data).trimmingCharacters(in: .whitespacesAndNewlines)
         return text.count > maxCharacters ? String(text.prefix(maxCharacters)) + "…" : text
     }
 

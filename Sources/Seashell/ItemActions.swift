@@ -86,7 +86,7 @@ enum ItemActions {
     private static func onlyInICloud(_ items: [StashItem], for action: String) -> Bool {
         let inICloud = items.filter { $0.cloud == .cloudOnly }
         guard !inICloud.isEmpty else { return false }
-        inICloud.forEach { try? CloudStatus.startDownloading($0.url) }
+        startDownloading(inICloud)
         Log.info("\(action): \(inICloud.count) item(s) only in iCloud, downloading")
         Alerts.tell(inICloud.count == 1 ? "“\(inICloud[0].name)” is only in iCloud" : "\(inICloud.count) items are only in iCloud",
                     detail: "It’s downloading to this Mac now. Try \(action) again in a moment.")
@@ -113,6 +113,88 @@ enum ItemActions {
         return (texts, failure)
     }
 
+    /// What an item's right-click menu does that depends on the shelf it's in.
+    struct MenuHandlers {
+        var open: @MainActor () -> Void
+        var quickLook: @MainActor () -> Void
+        var paste: @MainActor () -> Void
+        var rename: @MainActor (StashItem) -> Void
+        var putBack: @MainActor ([StashItem]) -> Void
+        var moveToTrash: @MainActor ([StashItem]) -> Void
+    }
+
+    /// The right-click menu for the selected items, the same in the panel and
+    /// tear-off shelves. `note` logs what's chosen, saying where.
+    static func menu(for selection: [StashItem], note: @escaping (String) -> Void, _ handlers: MenuHandlers) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        func add(_ title: String, enabled: Bool = true, _ action: @escaping @MainActor () -> Void) {
+            let item = menu.addItem(withTitle: title, action: #selector(MenuAction.run), keyEquivalent: "")
+            let handler = MenuAction(action)
+            item.target = handler
+            item.representedObject = handler  // keeps it alive while the menu is up
+            item.isEnabled = enabled
+        }
+        let count = "\(selection.count) \(selection.count == 1 ? "item" : "items")"
+        add("Open", handlers.open)
+        add("Quick Look", handlers.quickLook)
+        add("Show in Finder") {
+            note("Show in Finder \(count)")
+            NSWorkspace.shared.activateFileViewerSelecting(selection.map(\.url))
+        }
+        menu.addItem(.separator())
+        add("Copy") {
+            note("Copy \(count)")
+            copy(selection)
+        }
+        if selection.contains(where: TextRecognition.canRead) {
+            add("Copy Text") {
+                note("Copy Text \(count)")
+                copyText(selection)
+            }
+        }
+        if ReadAloud.shared.isReading {
+            add("Stop Reading") {
+                note("Stop Reading")
+                ReadAloud.shared.stop()
+            }
+        } else if selection.contains(where: canReadAloud) {
+            add("Read Aloud") {
+                note("Read Aloud \(count)")
+                readAloud(selection)
+            }
+        }
+        add("Paste", enabled: canPaste, handlers.paste)
+        add("Rename…", enabled: selection.count == 1) { selection.first.map(handlers.rename) }
+        menu.addItem(.separator())
+        let returnable = selection.filter { $0.origin != nil }
+        add("Put Back", enabled: !selection.isEmpty && returnable.count == selection.count) { handlers.putBack(returnable) }
+        add("Move to Trash") { handlers.moveToTrash(selection) }
+        return menu
+    }
+
+    /// Runs a file operation on the items at `urls` off the main thread,
+    /// reports what failed, then re-reads where they were.
+    static func perform<T: Sendable>(_ verb: String, _ urls: [URL], with mover: FileMover, store: StashStore,
+                                     _ operation: @escaping @Sendable (FileMover, [URL]) -> [Result<T, any Error>]) {
+        guard !urls.isEmpty else { return }
+        Task {
+            let results = await Task.detached { operation(mover, urls) }.value
+            for (url, result) in zip(urls, results) {
+                if case .failure(let error) = result { Alerts.showError("Couldn’t \(verb) “\(url.lastPathComponent)”", error) }
+            }
+            store.reload(around: urls)
+        }
+    }
+
+    /// Those of `items` only in iCloud start downloading: dragged out, the
+    /// copy lands sooner; for Copy Text or Read Aloud, they can be read next time.
+    static func startDownloading(_ items: [StashItem]) {
+        for item in items where item.cloud == .cloudOnly {
+            try? CloudStatus.startDownloading(item.url)
+        }
+    }
+
     /// Whether the clipboard holds something a shelf can take.
     static var canPaste: Bool {
         NSPasteboard.general.canReadObject(forClasses: [NSURL.self, NSImage.self, NSString.self], options: nil)
@@ -126,5 +208,20 @@ enum ItemActions {
         } catch {
             Alerts.showError("Couldn’t rename “\(item.name)”", error)
         }
+    }
+}
+
+/// A menu item's action as a closure. Menu items hold their target weakly,
+/// so the item keeps it as its represented object too.
+@MainActor
+final class MenuAction: NSObject {
+    private let action: @MainActor () -> Void
+
+    init(_ action: @escaping @MainActor () -> Void) {
+        self.action = action
+    }
+
+    @objc func run() {
+        action()
     }
 }

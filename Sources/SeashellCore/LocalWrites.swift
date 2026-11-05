@@ -21,6 +21,11 @@ public final class LocalWrites: Sendable {
         }
     }
 
+    /// The write noted for `url` didn't happen after all.
+    func forget(_ url: URL) {
+        written.withLock { _ = $0.removeValue(forKey: Self.key(url)) }
+    }
+
     /// Whether Seashell just wrote `url`. It's forgotten either way: the store
     /// asks once, when the item first shows up.
     func claim(_ url: URL, now: Date = .now) -> Bool {

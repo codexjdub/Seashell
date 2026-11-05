@@ -33,7 +33,12 @@ final class NoteWindows {
             window.bringForward()
             return
         }
-        let window = make(note)
+        let window: NoteWindow
+        do {
+            window = try make(note)
+        } catch {
+            return Alerts.showError("Couldn’t open “\(note.title)”", error)
+        }
         window.show(frame: nil, below: panel)
         window.bringForward()
         save()
@@ -61,8 +66,12 @@ final class NoteWindows {
                   let note = store.notes.first(where: { $0.url.lastPathComponent == name }),
                   let x = entry["x"] as? Double, let y = entry["y"] as? Double,
                   let width = entry["width"] as? Double, let height = entry["height"] as? Double else { continue }
-            make(note).show(frame: NSRect(x: x, y: y, width: width, height: height))
-            Log.info("Note window: \(note.title) restored")
+            do {
+                try make(note).show(frame: NSRect(x: x, y: y, width: width, height: height))
+                Log.info("Note window: \(note.title) restored")
+            } catch {
+                Log.error("Note window: \(note.title) not restored, it can’t be read: \(error.localizedDescription)")
+            }
         }
         onChange?()
     }
@@ -73,8 +82,9 @@ final class NoteWindows {
         save()
     }
 
-    private func make(_ note: Note) -> NoteWindow {
-        let window = NoteWindow(note: note, store: store)
+    /// Throws if the note can't be read.
+    private func make(_ note: Note) throws -> NoteWindow {
+        let window = try NoteWindow(note: note, store: store)
         window.onMove = { [weak self] in self?.save() }
         window.onRenamed = { [weak self, weak window] old in
             guard let self, let window else { return }
@@ -130,12 +140,14 @@ final class NoteWindow: NSObject, NSWindowDelegate, NSTextViewDelegate {
     private var isClosing = false
     private lazy var window = makeWindow()
 
-    init(note: Note, store: NotesStore) {
+    /// Throws if the note can't be read: shown blank, closing the window would
+    /// send it to the Trash.
+    init(note: Note, store: NotesStore) throws {
         self.store = store
         editor = NoteEditor(store: store)
         name = note.url.lastPathComponent
         super.init()
-        editor.load(note)
+        try editor.load(note)
         title.stringValue = note.title
         editor.onSave = { [weak self] _ in self?.noteChanged() }
         observeChanges { [weak self] in self?.followStore() }

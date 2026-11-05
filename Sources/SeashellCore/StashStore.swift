@@ -29,7 +29,7 @@ public final class StashStore {
     /// What waits to be re-read in the background, and whether a re-read is under way.
     @ObservationIgnored private var queued = Rescan()
     @ObservationIgnored private var isRescanning = false
-    /// Full reloads so far: a background re-read that started before one is out of date.
+    /// Reloads done there and then so far: a background re-read that started before one is out of date.
     @ObservationIgnored private var fullReloads = 0
     /// The Stash folder's path, as written and with symlinks resolved (change events use the latter).
     @ObservationIgnored private let stashPaths: [[String]]
@@ -71,6 +71,19 @@ public final class StashStore {
         fullReloads += 1
         let newShelves = library.shelves()
         apply(newShelves, Dictionary(uniqueKeysWithValues: newShelves.map { ($0.name, library.contents(of: $0)) }))
+    }
+
+    /// Re-reads the list of shelves now, for when Seashell just added, renamed,
+    /// removed or reordered one and what follows needs the new list. Only a
+    /// shelf new to the list (made, or renamed) has its items read: reading
+    /// every item asks iCloud about each, a moment apiece, too long to wait for.
+    public func reloadShelves() {
+        fullReloads += 1
+        let newShelves = library.shelves()
+        let fresh = newShelves.filter { itemsByShelf[$0.name] == nil }
+        apply(newShelves, Dictionary(uniqueKeysWithValues: fresh.map { ($0.name, library.contents(of: $0)) }))
+        // A re-read under way started before this, so it'll be dropped: read everything again after it.
+        if isRescanning { reload(around: nil) }
     }
 
     /// Re-reads, in the background, the shelves holding `changed` (items in
