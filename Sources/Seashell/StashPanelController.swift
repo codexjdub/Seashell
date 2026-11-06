@@ -11,6 +11,11 @@ final class StashPanelController: NSViewController {
     /// Called when items dragged out of the grid were taken by a drop, with
     /// where it happened (screen coordinates).
     var onDraggedOut: ((NSPoint) -> Void)?
+    /// Something was dropped onto a shelf here (from another app, or moved
+    /// from the grid onto a tab), for the notes cat to nod at.
+    var onShelfDrop: (() -> Void)?
+    /// Items started being dragged out of the grid, for the notes cat to wave at.
+    var onDragOutBegan: (() -> Void)?
     /// A tab dragged out of the panel: that shelf, and where it was let go.
     var onTearOff: ((Shelf, NSPoint) -> Void)?
     /// A shelf renamed here: its old and new names.
@@ -308,12 +313,17 @@ final class StashPanelController: NSViewController {
     private func drop(_ info: any NSDraggingInfo, onto shelf: Shelf) -> Bool {
         guard info.draggingSource is StashGridView else {
             note("drop from another app onto tab “\(shelf.name)”")
-            return dropper.accept(info, into: shelf.url)
+            let accepted = dropper.accept(info, into: shelf.url)
+            if accepted { onShelfDrop?() }
+            return accepted
         }
         let urls = draggedURLs
         note("\(count(urls.count)) dragged from the grid onto tab “\(shelf.name)”")
         move(urls, to: shelf.url)
-        if !urls.isEmpty { SealView.react(.catchDrop, in: view.window) }
+        if !urls.isEmpty {
+            SealView.react(.catchDrop, in: view.window)
+            onShelfDrop?()
+        }
         return !urls.isEmpty
     }
 
@@ -446,6 +456,7 @@ extension StashPanelController: NSCollectionViewDataSource, NSCollectionViewDele
         let kinds = indexPaths.sorted().map { "\(items[$0.item].kind)" }.joined(separator: ", ")
         note("dragging out \(count(indexPaths.count)) (\(kinds))")
         ItemActions.startDownloading(indexPaths.map { items[$0.item] })
+        onDragOutBegan?()
     }
 
     func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession,
@@ -470,7 +481,9 @@ extension StashPanelController: NSCollectionViewDataSource, NSCollectionViewDele
                         indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
         guard let shelf = currentShelf else { return false }
         note("drop from another app into “\(shelf.name)”")
-        return dropper.accept(draggingInfo, into: shelf.url)
+        let accepted = dropper.accept(draggingInfo, into: shelf.url)
+        if accepted { onShelfDrop?() }
+        return accepted
     }
 }
 

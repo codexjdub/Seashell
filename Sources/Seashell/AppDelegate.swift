@@ -114,7 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         observeChanges { [optionShakeWatcher] in optionShakeWatcher.setShakeSensitivity(AppSettings.shared.shakeSensitivity) }
         dragWatcher.onHoldAtTopEdge = { panel.open(on: NSScreen.containing($0), reason: "drag held at top edge") }
-        dragWatcher.onDragMoved = { SealView.dragMoved(to: $0) }
+        dragWatcher.onDragMoved = { point in
+            SealView.dragMoved(to: point)
+            NotesCat.dragMoved(to: point)
+        }
         dragWatcher.start()
         edgeScrollWatcher.onGesture = { gesture, screen in
             switch gesture {
@@ -139,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let arrived = store.arrivals.values.map(\.count).reduce(0, +)
             if arrived > 0, !SealView.showsPearl { Log.info("New since the panel was last open: \(arrived) item(s)") }
             SealView.showsPearl = arrived > 0
-            if arrived > 0 { NotesCat.somethingArrived() }
+            NotesCat.arrivalsChanged(to: arrived)
         }
         tipsWindow.showIfFirstLaunch()
     }

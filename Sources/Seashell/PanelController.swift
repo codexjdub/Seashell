@@ -78,6 +78,8 @@ final class PanelController: NSObject {
         super.init()
         stash.onDraggedOut = { [weak self] point in self?.droppedElsewhere(at: point) }
         notes.onDraggedOut = { [weak self] point in self?.droppedElsewhere(at: point) }
+        stash.onShelfDrop = { [weak self] in self?.notes.catReact(.shelfDrop) }
+        stash.onDragOutBegan = { [weak self] in self?.notes.catReact(.dragOut) }
         observeChanges { [weak self] in self?.textSizeChanged() }
     }
 

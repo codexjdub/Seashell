@@ -51,6 +51,11 @@ final class NotesPanelController: NSViewController {
     private var listWidth: NSLayoutConstraint?
     /// Lying on the header, right of "Notes", if Settings shows it.
     private let cat = NotesCat()
+
+    /// Something happened on the shelves that the cat reacts to.
+    func catReact(_ reaction: NotesCat.Reaction) {
+        cat.react(reaction)
+    }
     private var header: NSStackView?
     private var catSize: [NSLayoutConstraint] = []
     private var catTrailing: NSLayoutConstraint?
