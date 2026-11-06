@@ -12,6 +12,9 @@ import SeashellCore
 /// Esc goes to the window (the panel saves and closes) instead of the text
 /// view's usual "suggest completions".
 final class NoteTextView: NSTextView, NSTextStorageDelegate {
+    /// A to-do was ticked with a click; true if every to-do in the note is now done.
+    var onTick: ((_ allDone: Bool) -> Void)?
+
     static func make() -> NoteTextView {
         let editor = NoteTextView()
         editor.textStorage?.delegate = editor
@@ -58,6 +61,7 @@ final class NoteTextView: NSTextView, NSTextStorageDelegate {
            let item = checklistItem(at: event) {
             window?.makeFirstResponder(self)
             apply(Checklist.toggle(item))
+            if !item.isDone { onTick?(Checklist.items(in: string).allSatisfy(\.isDone)) }
             return
         }
         super.mouseDown(with: event)

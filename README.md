@@ -70,6 +70,7 @@ Seashell never deletes anything permanently: removed items go to the Trash.
 - **Lists.** Return after `- item` or `1. item` starts the next one. Tab and ⇧Tab move list lines in and out.
 - **A note in its own window.** Right-click a note and choose Open in Its Own Window: it floats above other windows, like a sticky note, until you close it.
 - **More on right-click:** Open With another app, Show in Finder, Copy, Duplicate.
+- **A cat for company.** Turn on "Show a cat by your notes" in Settings and a grey cat lies on the Notes header. Its eyes follow your pointer and your typing, it perks up at a new note, pats a ticked to-do (and purrs when they're all done), sits up proud when you pin a note, swats one you move to the Trash, listens while Seashell reads aloud, and dozes off when left alone. Click it to pet it. With Reduce Motion on it keeps its faces but stays still.
 
 ## Where your things live
 
@@ -98,6 +99,7 @@ Open Settings from the menu bar icon, with ⌘, in the panel, or by clicking the
 - Apps where shakes are ignored, such as drawing apps and games
 - Keyboard shortcut
 - Pull down at the top edge to open the panel
+- Show a cat by your notes (off unless you turn it on)
 
 The menu bar icon's menu also lists your shelves, with how many items each holds, and how many notes you have. Choosing a shelf, or All Notes, opens the panel there, and Show in Finder opens Seashell's folder. Tips… shows the welcome tips again. About Seashell shows the version and has a Check for Updates… button, which asks GitHub for the newest release and offers its download page if it's newer.
 

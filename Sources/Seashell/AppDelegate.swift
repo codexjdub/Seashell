@@ -139,6 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let arrived = store.arrivals.values.map(\.count).reduce(0, +)
             if arrived > 0, !SealView.showsPearl { Log.info("New since the panel was last open: \(arrived) item(s)") }
             SealView.showsPearl = arrived > 0
+            if arrived > 0 { NotesCat.somethingArrived() }
         }
         tipsWindow.showIfFirstLaunch()
     }

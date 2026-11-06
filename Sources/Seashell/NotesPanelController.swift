@@ -49,6 +49,11 @@ final class NotesPanelController: NSViewController {
     private let headerTitle = NSTextField(labelWithString: "Notes")
     private var headerHeight: NSLayoutConstraint?
     private var listWidth: NSLayoutConstraint?
+    /// Lying on the header, right of "Notes", if Settings shows it.
+    private let cat = NotesCat()
+    private var header: NSStackView?
+    private var catSize: [NSLayoutConstraint] = []
+    private var catTrailing: NSLayoutConstraint?
 
     init(store: NotesStore, windows: NoteWindows) {
         self.store = store
@@ -73,6 +78,7 @@ final class NotesPanelController: NSViewController {
         let header = NSStackView(views: [headerTitle, add])
         header.orientation = .horizontal
         header.spacing = 8
+        self.header = header
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
         table.addTableColumn(column)
@@ -109,7 +115,9 @@ final class NotesPanelController: NSViewController {
         // A separator wants to stay a few points tall; tied to the list, it would squash it.
         divider.setContentHuggingPriority(.defaultLow, for: .vertical)
 
-        for subview in [header, listScroll, divider, editorScroll, placeholder] {
+        editor.textView.onTick = { [weak self] allDone in self?.cat.react(.ticked(allDone: allDone)) }
+
+        for subview in [header, listScroll, divider, editorScroll, placeholder, cat] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(subview)
         }
@@ -138,9 +146,30 @@ final class NotesPanelController: NSViewController {
             placeholder.topAnchor.constraint(equalTo: editorScroll.topAnchor, constant: 8),
             placeholder.leadingAnchor.constraint(equalTo: editorScroll.leadingAnchor, constant: 11),
         ])
+        // Its paws on the line where the list and editor start; far enough
+        // from the right edge to stay clear of the shell on the panel's edge.
+        let catTrailing = cat.trailingAnchor.constraint(equalTo: root.trailingAnchor)
+        self.catTrailing = catTrailing
+        catSize = [cat.heightAnchor.constraint(equalToConstant: 0), cat.widthAnchor.constraint(equalToConstant: 0)]
+        NSLayoutConstraint.activate(catSize + [catTrailing, cat.bottomAnchor.constraint(equalTo: listScroll.topAnchor, constant: 1)])
         view = root
         observeChanges { [weak self] in self?.refresh() }
         observeChanges { [weak self] in self?.applyTextSize() }
+        observeChanges { [weak self] in self?.updateCat() }
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        updateCat()
+    }
+
+    /// Shown if Settings says so and there's room beside "Notes" and its
+    /// button: on a narrow Notes card it would cover the button.
+    private func updateCat() {
+        let wanted = AppSettings.shared.showsNotesCat
+        let fits = header.map { cat.frame.minX >= $0.frame.maxX + 8 } ?? true
+        let hide = !(wanted && fits)
+        if cat.isHidden != hide { cat.isHidden = hide }
     }
 
     /// Re-sizes text, rows and the list. Reads the text size, so it runs again when that changes.
@@ -152,6 +181,10 @@ final class NotesPanelController: NSViewController {
         table.rowHeight = UIScale.pt(38)
         editor.textView.font = UIScale.font(13)
         placeholder.font = UIScale.font(13)
+        // About the shell's size.
+        catSize[0].constant = UIScale.pt(Seal.size)
+        catSize[1].constant = UIScale.pt(Seal.size) * NotesCat.aspect
+        catTrailing?.constant = -UIScale.pt(20)
         table.reloadData()
         selectCurrentRow()
     }
@@ -163,11 +196,13 @@ final class NotesPanelController: NSViewController {
            let note = store.notes.first(where: { $0.url.lastPathComponent == name }), !windows.contains(note) {
             open(note)
         }
+        cat.shown()
     }
 
     /// Closing the panel (or quitting) leaves the note: saved, renamed, or trashed if empty.
     func willHide() {
         leaveCurrent()
+        cat.hidden()
     }
 
     // MARK: Following the store
@@ -274,6 +309,7 @@ final class NotesPanelController: NSViewController {
         reloadList()
         updatePlaceholder()
         focusEditor()
+        cat.react(.newNote)
     }
 
     /// After the editor saved: a new note got its file (named after its first
@@ -470,6 +506,7 @@ final class NotesPanelController: NSViewController {
         note("\(target.isPinned ? "Unpin" : "Pin") \(target.title)")
         do {
             try store.library.setPinned(target, !target.isPinned)
+            if !target.isPinned { cat.react(.pinned) }
         } catch {
             Alerts.showError("Couldn’t \(target.isPinned ? "unpin" : "pin") “\(target.title)”", error)
         }
@@ -517,6 +554,7 @@ final class NotesPanelController: NSViewController {
         }
         do {
             try store.library.delete(target)
+            cat.react(.trashed)
         } catch {
             Alerts.showError("Couldn’t move “\(target.title)” to the Trash", error)
         }
@@ -533,6 +571,8 @@ final class NotesPanelController: NSViewController {
 extension NotesPanelController: NSTextViewDelegate {
     func textDidChange(_ notification: Notification) {
         editor.textChanged()
+        let textView = editor.textView
+        cat.typed(caret: textView.firstRect(forCharacterRange: textView.selectedRange(), actualRange: nil))
         if editor.note == nil, !isDraft {
             // Typing with nothing open starts a new note.
             isDraft = true

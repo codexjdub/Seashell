@@ -17,7 +17,10 @@ final class ReadAloud: NSObject, AVSpeechSynthesizerDelegate {
 
     /// From the moment it's asked for (words still being found) until it ends.
     private(set) var isReading = false {
-        didSet { SealView.isBreathing = isReading }
+        didSet {
+            SealView.isBreathing = isReading
+            NotesCat.isListening = isReading
+        }
     }
 
     override init() {

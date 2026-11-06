@@ -15,6 +15,7 @@ final class SettingsWindow: NSObject {
     private let largeFilePopup = NSPopUpButton()
     private let shakePopup = NSPopUpButton()
     private let pullDownCheckbox = NSButton(checkboxWithTitle: "Pull down at the top edge to open the panel", target: nil, action: nil)
+    private let catCheckbox = NSButton(checkboxWithTitle: "Show a cat by your notes", target: nil, action: nil)
     private let ignoredApps = IgnoredAppsView()
     private let shortcutPopup = NSPopUpButton()
     private let folderPath = NSTextField(labelWithString: "")
@@ -74,6 +75,10 @@ final class SettingsWindow: NSObject {
         AppSettings.shared.panelShortcut = shortcut
     }
 
+    @objc private func catToggled(_ sender: NSButton) {
+        AppSettings.shared.showsNotesCat = sender.state == .on
+    }
+
     @objc private func pullDownToggled(_ sender: NSButton) {
         AppSettings.shared.opensOnPullDown = sender.state == .on
     }
@@ -118,6 +123,7 @@ final class SettingsWindow: NSObject {
         Self.select(settings.shakeSensitivity, in: shakePopup)
         Self.select(settings.panelShortcut, in: shortcutPopup)
         pullDownCheckbox.state = settings.opensOnPullDown ? .on : .off
+        catCheckbox.state = settings.showsNotesCat ? .on : .off
         ignoredApps.show(settings.shakeIgnoredApps)
     }
 
@@ -140,7 +146,8 @@ final class SettingsWindow: NSObject {
         Self.fill(largeFilePopup, with: LargeFileLimit.allCases, name: \.name, target: self, action: #selector(largeFileLimitChosen))
         Self.fill(shakePopup, with: ShakeSensitivity.allCases, name: \.name, target: self, action: #selector(shakeChosen))
         Self.fill(shortcutPopup, with: PanelShortcut.allCases, name: \.name, target: self, action: #selector(shortcutChosen))
-        for (checkbox, action) in [(loginCheckbox, #selector(loginToggled)), (pullDownCheckbox, #selector(pullDownToggled))] {
+        for (checkbox, action) in [(loginCheckbox, #selector(loginToggled)), (pullDownCheckbox, #selector(pullDownToggled)),
+                                  (catCheckbox, #selector(catToggled))] {
             checkbox.target = self
             checkbox.action = action
         }
@@ -178,13 +185,15 @@ final class SettingsWindow: NSObject {
             [Self.label("Top edge:"), pullDownCheckbox],
             [Self.label("Keyboard shortcut:"), shortcutPopup],
             [empty, Self.note("Opens and closes the panel from any app.")],
+            [Self.label("Notes:"), catCheckbox],
+            [empty, Self.note("A grey cat lies on the Notes header and reacts to what you do. Click it to pet it.")],
         ])
         grid.rowSpacing = 8
         grid.columnSpacing = 8
         grid.rowAlignment = .firstBaseline
         grid.column(at: 0).xPlacement = .trailing
         // A little more room above each group.
-        for row in [3, 5, 8, 10, 13, 14] { grid.row(at: row).topPadding = 8 }
+        for row in [3, 5, 8, 10, 13, 14, 16] { grid.row(at: row).topPadding = 8 }
         // The list has no baseline: line its label up with the top of the list.
         grid.row(at: 12).rowAlignment = .none
         grid.row(at: 12).yPlacement = .top

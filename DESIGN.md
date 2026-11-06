@@ -38,6 +38,16 @@ A third area, the Clipboard (Copy and Cut), is designed but on hold; see the end
 - The Stash tabs and the Notes header share one height, so tabs, +, Notes and the pencil sit on one center line.
 - Stash (55%) and Notes each sit on their own rounded, lightly tinted card with a small gap. The Notes card and Stash's note cards share one faint yellow wash, and the selected note is a little stronger. Dark Mode: 6% (border 22%, selected 16%). Light Mode needs a little more to show: 10% (border 30%, selected 22%).
 - Notes: a list (most recently edited first) beside a plain-text editor; Markdown is kept exactly as typed. The first line is the title, and the file is renamed to match when you leave the note (switch notes, close the panel, quit). Two notes with the same title are `Groceries.md` and `Groceries 2.md`, and the second keeps its number rather than being renamed on every visit. If a note can't be saved, it stays open with its text instead of being left. Saves 1 s after you stop typing. ⌘N or the pencil adds a selected "New Note" row with the cursor in the editor; it gets a file once you type, and left empty it just disappears. An existing note left empty goes to the Trash. A note that can't be read (only in iCloud while offline, or not UTF-8) isn't opened: it says so and stays as it is, since shown blank it would look emptied and go to the Trash on leaving. The same goes for its own window, and one that can't be read at launch isn't restored. Rows show live titles as you type. Drag a note out as its text (plus a `.md` for Finder); drop text onto the list to start a note, including a text card dragged from Stash. The list holds still while a note is dragged out of it.
+- The notes cat (NotesCat; Settings ▸ "Show a cat by your notes", off at first): a grey tabby with white socks lying like a loaf on the Notes header, right of "Notes", its paws on the line where the list and editor start; about the shell's size (42 pt tall at Small, scaled with text), kept 20 pt from the card's right edge so it stays clear of the shell. Drawn in code from the mock-up's shapes (a 120 × 76 grid), each moving part on its own layer pivoting where it would. Panel only, not note windows. It reacts:
+  - **Watching**: its eyes follow the pointer anywhere over the panel (a tracking area on the window's content view), and the text cursor as you type; it blinks every few seconds.
+  - **Typing**: an ear twitches with each key; a paw bat at most every 2.5 s and 8 keys (CatPace).
+  - **New note**: a hop, ears up, an open "mrrp" mouth and a "!".
+  - **To-do ticked** by a click (NoteTextView.onTick): a paw pat and a sparkle; the last one ticked gets happy eyes, pink cheeks, hearts and a purr.
+  - **Pinned**: sits up proud with a slow blink. **Moved to the Trash**: swats, then looks away with a flat mouth.
+  - **Read Aloud** (anything Seashell reads): ears up, its head tilting, ♪ now and then.
+  - **Petted** (a click): happy eyes, hearts, "prrr". Clicking does nothing else.
+  - **Left alone** for 3 minutes with the panel open: it dozes off (eyes shut, head down, breathing, z's). Typing, hovering over it, a reaction or something arriving on a shelf wakes it. It's awake whenever the panel opens; nothing runs while the panel is closed or the cat is off.
+  - With Reduce Motion on it keeps its faces (eyes, mouth, cheeks) and the glyphs fade in place, but nothing moves, turns or blinks.
 - Pinned notes: right-click a note → Pin keeps it at the top of the list, with a pin at the end of its title line (Unpin puts it back among the rest). Pins are kept by file name in `Notes/.seashell.json`, written the same careful way as a shelf's, so they sync. A note renamed to its first line keeps its pin and one moved to the Trash loses it; renaming one in Finder loses it too. A pin whose note has stayed gone for a minute (deleted or renamed in Finder, say) is forgotten, so a later note of that name doesn't come back pinned; the minute covers iCloud bringing the pin list before the note.
 - To-dos: a line starting `- [ ]` is a to-do and `- [x]` a done one, as in GitHub's Markdown (`*` or `+` work too, indented or not). Click the `- [ ]` to tick or untick it. Done ones show grey with their words struck through, only on screen: the file stays plain text. Return at the end of a to-do starts the next one with the same indentation and bullet; Return on an empty to-do ends the list. ⇧⌘L (as in Apple Notes) turns the line, or the selected lines, into to-dos (a bulleted line keeps its bullet; blank lines in a selection are skipped), or back into plain lines if they all are already. Ticks, Return and ⇧⌘L undo like typing. A note whose first line is a to-do is titled by the words after the box.
 - Lists: Return after `- milk` (or `*`, `+`) starts the next bullet, after `3. milk` (or `3)`) the next number, and after a to-do a new box. Return on an empty item moves it out a level, or ends the list if it isn't indented. Tab moves a list line in a level (or every selected line, when several are, blank ones aside) and ⇧Tab moves out (a tab, or up to four spaces); elsewhere Tab types a tab. A level is a tab character, which nests under bullets and numbers alike in Markdown.
@@ -159,6 +169,7 @@ Sources/
     NotesManifest         the Notes folder's .seashell.json: pinned notes
     NoteSession           the note being edited: saving, "(edited here)" copies, following the folder
     Checklist             to-do lines in notes: finding, ticking, ⇧⌘L
+    CatPace               how often the notes cat bats at your typing
     NoteLines             line-by-line note edits; MarkdownList: Return in lists, Tab and ⇧Tab
     FolderWatcher         FSEvents on the Seashell folder, with which folders changed
     Coordinated           NSFileCoordinator wrappers, so iCloud sees orderly writes
@@ -177,6 +188,7 @@ Sources/
     PanelController       the pull-down panel: non-activating NSPanel, slide, pin, resize
     StashPanelController  shelf tabs and the item grid (StashGridView)
     NotesPanelController  the note list and editor
+    NotesCat              the cat on the Notes header and its reactions
     NoteEditor            the editor and its note (a NoteSession), shared by the panel and note windows
     NoteTextView          the note text view (to-dos, lists), and EditShortcuts for windows with no Edit menu
     NoteWindow            notes in their own floating windows (NoteWindows keeps and restores them)

@@ -17,6 +17,7 @@ final class AppSettings {
         static let opensOnPullDown = "opensOnPullDown"
         static let shakeIgnoredApps = "shakeIgnoredApps"
         static let panelShortcut = "panelShortcut"
+        static let showsNotesCat = "showsNotesCat"
     }
 
     var theme: Theme {
@@ -57,6 +58,14 @@ final class AppSettings {
         }
     }
 
+    /// A cat lies on the Notes header and reacts to what you do with notes. Off at first.
+    var showsNotesCat: Bool {
+        didSet {
+            UserDefaults.standard.set(showsNotesCat, forKey: Key.showsNotesCat)
+            Log.info(showsNotesCat ? "Notes cat: on" : "Notes cat: off")
+        }
+    }
+
     /// Apps (bundle IDs) in which shakes are ignored, for both the drop shelf and
     /// the grab shelf: drawing apps and games move the pointer fast on purpose.
     var shakeIgnoredApps: [String] {
@@ -87,6 +96,7 @@ final class AppSettings {
         opensOnPullDown = UserDefaults.standard.object(forKey: Key.opensOnPullDown) as? Bool ?? true
         shakeIgnoredApps = UserDefaults.standard.stringArray(forKey: Key.shakeIgnoredApps) ?? []
         panelShortcut = Self.load(Key.panelShortcut) ?? .standard
+        showsNotesCat = UserDefaults.standard.bool(forKey: Key.showsNotesCat)
     }
 
     private static func load<Value: RawRepresentable>(_ key: String) -> Value? where Value.RawValue == String {
