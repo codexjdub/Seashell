@@ -33,9 +33,10 @@ enum Seal {
     }
 
     /// Where its center sits below a shelf's top: a fifth of the way down, but
-    /// never so high that it would stick out above a short shelf.
-    static func centerOffset(inHeight height: CGFloat) -> CGFloat {
-        max(height * shelfPosition, UIScale.pt(size) / 2 + 2)
+    /// never so high that it would stick out above a short shelf, or reach
+    /// into the top `clearing` points (a title bar with a close button).
+    static func centerOffset(inHeight height: CGFloat, clearing: CGFloat = 0) -> CGFloat {
+        max(height * shelfPosition, clearing + UIScale.pt(size) / 2 + 2)
     }
 }
 

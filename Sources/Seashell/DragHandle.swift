@@ -1,13 +1,16 @@
 import AppKit
 import SeashellCore
 
-/// An invisible strip you drag to resize something: the panel's edges, or the
-/// gap between its cards. Shows a resize pointer and reports how far you drag.
+/// An invisible strip you drag to resize something: the panel's edges, the
+/// gap between its cards, or a tear-off shelf's edges and corners. Shows a
+/// resize pointer and reports how far you drag.
 @MainActor
 final class DragHandle: NSView {
     enum Direction {
         case horizontal
         case vertical
+        /// A window's edge or corner, with the pointer macOS shows there.
+        case frame(NSCursor.FrameResizePosition)
     }
 
     /// Movement since the last call, in points; y grows downward.
@@ -32,8 +35,18 @@ final class DragHandle: NSView {
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        (direction == .horizontal ? NSCursor.columnResize : NSCursor.rowResize).set()
+        switch direction {
+        case .horizontal: NSCursor.columnResize.set()
+        case .vertical: NSCursor.rowResize.set()
+        case .frame(let position): NSCursor.frameResize(position: position, directions: .all).set()
+        }
     }
+
+    /// Floating shelves are rarely the key window: the first drag resizes.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// In a window that moves by its background, dragging here resizes instead.
+    override var mouseDownCanMoveWindow: Bool { false }
 
     override func mouseDown(with event: NSEvent) {}
 

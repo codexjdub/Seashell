@@ -17,6 +17,7 @@ final class SettingsWindow: NSObject {
     private let pullDownCheckbox = NSButton(checkboxWithTitle: "Pull down at the top edge to open the panel", target: nil, action: nil)
     private let ignoredApps = IgnoredAppsView()
     private let shortcutPopup = NSPopUpButton()
+    private let folderPath = NSTextField(labelWithString: "")
 
     /// The pull-down panel's frame while it's open, so Settings opens below it.
     var panelFrame: (() -> NSRect?)?
@@ -77,6 +78,24 @@ final class SettingsWindow: NSObject {
         AppSettings.shared.opensOnPullDown = sender.state == .on
     }
 
+    @objc private func chooseFolder() {
+        Log.info("Settings: Choose… for Seashell’s folder")
+        let panel = FolderLocation.folderPanel()
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            // Once the sheet has gone, or it stays on screen behind what change asks.
+            DispatchQueue.main.async { FolderLocation.change(to: url) }
+        }
+    }
+
+    @objc private func showFolder() {
+        NSWorkspace.shared.open(FolderLocation.folders.root)
+    }
+
+    @objc private func useDocuments() {
+        FolderLocation.change(to: SeashellFolders.defaultParent)
+    }
+
     @objc private func loginToggled(_ sender: NSButton) {
         do {
             try LoginItem.set(sender.state == .on)
@@ -126,6 +145,21 @@ final class SettingsWindow: NSObject {
             checkbox.action = action
         }
 
+        // Where Seashell keeps things; it changes only by restarting, so it's
+        // filled in once.
+        let root = FolderLocation.folders.root
+        folderPath.stringValue = FolderLocation.display(root)
+        folderPath.toolTip = root.path(percentEncoded: false)
+        folderPath.lineBreakMode = .byTruncatingMiddle
+        folderPath.widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
+        let documentsButton = NSButton(title: "Use Documents", target: self, action: #selector(useDocuments))
+        documentsButton.isHidden = FolderLocation.isInDocuments
+        let folderButtons = NSStackView(views: [NSButton(title: "Choose…", target: self, action: #selector(chooseFolder)),
+                                                NSButton(title: "Show in Finder", target: self, action: #selector(showFolder)),
+                                                documentsButton])
+        folderButtons.spacing = 8
+        let inICloud = FolderLocation.isInICloud
+
         let empty = NSGridCell.emptyContentView
         let grid = NSGridView(views: [
             [Self.label("Theme:"), themePopup],
@@ -133,6 +167,9 @@ final class SettingsWindow: NSObject {
             [empty, Self.note("In the panel: ⌘+ bigger, ⌘− smaller, ⌘0 Medium.")],
             [Self.label("Startup:"), loginCheckbox],
             [empty, loginNote],
+            [Self.label("Folder:"), folderPath],
+            [empty, folderButtons],
+            [empty, Self.note(inICloud ? "In iCloud Drive, so your other Macs have it too." : "Not in iCloud Drive, so only this Mac has it.")],
             [Self.label("Ask before stashing:"), largeFilePopup],
             [empty, Self.note("Everything in Stash uploads to iCloud and counts against your storage.")],
             [Self.label("Shake to show the shelf:"), shakePopup],
@@ -147,12 +184,14 @@ final class SettingsWindow: NSObject {
         grid.rowAlignment = .firstBaseline
         grid.column(at: 0).xPlacement = .trailing
         // A little more room above each group.
-        for row in [3, 5, 7, 10, 11] { grid.row(at: row).topPadding = 8 }
+        for row in [3, 5, 8, 10, 13, 14] { grid.row(at: row).topPadding = 8 }
         // The list has no baseline: line its label up with the top of the list.
-        grid.row(at: 9).rowAlignment = .none
-        grid.row(at: 9).yPlacement = .top
+        grid.row(at: 12).rowAlignment = .none
+        grid.row(at: 12).yPlacement = .top
         loginNoteRow = grid.row(at: 4)
         loginNoteRow?.isHidden = true
+        // Only iCloud counts it against storage.
+        grid.row(at: 9).isHidden = !inICloud
         grid.translatesAutoresizingMaskIntoConstraints = false
 
         let content = NSView()

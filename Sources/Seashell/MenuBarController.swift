@@ -142,7 +142,8 @@ final class MenuBarController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDra
         ReadAloud.shared.stop()
     }
 
-    /// `~/Documents/Seashell`, which holds both Stash and Notes.
+    /// Seashell's folder (`~/Documents/Seashell` unless you chose another),
+    /// which holds both Stash and Notes.
     @objc private func showFolder() {
         Log.info("Menu: Show in Finder")
         NSWorkspace.shared.open(store.library.stash.deletingLastPathComponent())

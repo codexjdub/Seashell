@@ -56,7 +56,7 @@ final class TipsWindow: NSObject {
             ("contextualmenu.and.cursorarrow", "Stash from Finder",
              "Right-click files and choose Services ▸ Stash in Seashell. Text selected in any app can go there too, or become a note with New Seashell Note."),
             ("camera.viewfinder", "Screenshots straight to Stash",
-             "Press ⇧⌘5. In the toolbar near the bottom of the screen, click Options, choose Other Location… and pick Documents ▸ Seashell ▸ Stash ▸ Main."),
+             "Press ⇧⌘5. In the toolbar near the bottom of the screen, click Options, choose Other Location… and pick \(FolderLocation.mainShelfInFinder)."),
         ]
     }
 
@@ -68,8 +68,9 @@ final class TipsWindow: NSObject {
         NSLayoutConstraint.activate([icon.widthAnchor.constraint(equalToConstant: 72), icon.heightAnchor.constraint(equalToConstant: 72)])
         let title = NSTextField(labelWithString: "Welcome to Seashell")
         title.font = .systemFont(ofSize: 20, weight: .semibold)
+        let place = FolderLocation.isInDocuments ? "Documents" : "“\(FolderLocation.name(of: FolderLocation.parent))”"
         let subtitle = NSTextField(wrappingLabelWithString:
-            "A shelf for files, text, links and notes, kept in Documents so iCloud syncs it. Here’s how to reach it:")
+            "A shelf for files, text, links and notes, kept in \(place)\(FolderLocation.isInICloud ? " so iCloud syncs it" : ""). Here’s how to reach it:")
         subtitle.textColor = .secondaryLabelColor
         subtitle.alignment = .center
         subtitle.preferredMaxLayoutWidth = 420

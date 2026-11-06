@@ -2,7 +2,7 @@
 
 A shelf for your Mac that slides down from under the menu bar. Drop files, folders, text, links and pictures on it, keep notes beside them, and drag them back out whenever you need them.
 
-Everything lives as ordinary files in `~/Documents/Seashell`, so iCloud syncs it to your other Macs and Finder can always see it.
+Everything lives as ordinary files in `~/Documents/Seashell`, so iCloud syncs it to your other Macs and Finder can always see it. You can choose another folder in Settings.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/panel-dark.png">
@@ -27,7 +27,7 @@ After that it opens normally. Its icon appears in the menu bar, and a welcome wi
 - **Text, links and pictures become files.** Text is saved as a `.txt` named by its first few words, a link as a `.webloc`, and picture data as a `.png`. Text and links drag back out as their words or address, so they drop straight into text fields and browsers.
 - **Notes.** Plain-text notes next to your shelves, each saved as a Markdown file. The first line is the title. Pin the ones you use most to the top of the list, and keep to-do lists in them.
 - **Grab shelf.** Hold ⌥ and shake the pointer to see your 8 newest items, ready to drag out.
-- **Tear-off shelves.** Drag a shelf's tab out of the panel to keep that shelf in its own small floating window.
+- **Tear-off shelves.** Drag a shelf's tab out of the panel to keep that shelf in its own small floating window. Drag its edges or corners to make it bigger or smaller, a column or row of tiles at a time.
 
 ## Opening it
 
@@ -45,7 +45,7 @@ It closes on a click elsewhere, Esc, pushing up, or the same shortcut. The pin k
 - **Drop onto the menu bar icon.** It goes into Main.
 - **From Finder or any app.** Right-click files or selected text and choose Services ▸ **Stash in Seashell** to put them in Main, or **New Seashell Note** to make a note of the text.
 - **Paste.** ⌘V in the panel stashes what's on the clipboard. Files are copied in and the originals stay.
-- **Screenshots.** Press ⇧⌘5. In the toolbar near the bottom of the screen, click Options, choose Other Location… and pick Documents ▸ Seashell ▸ Stash ▸ Main.
+- **Screenshots.** Press ⇧⌘5. In the toolbar near the bottom of the screen, click Options, choose Other Location… and pick Documents ▸ Seashell ▸ Stash ▸ Main (or Seashell ▸ Stash ▸ Main in the folder you chose).
 
 Anything over 1 GB asks first, since everything in Stash uploads to iCloud. Change the limit in Settings.
 
@@ -83,6 +83,8 @@ Seashell never deletes anything permanently: removed items go to the Trash.
 
 They're plain files and folders. Changes you make in Finder, or on another Mac, show up in Seashell as they happen. Syncing between Macs needs iCloud Drive's **Desktop & Documents Folders** turned on.
 
+To keep them somewhere else, such as another disk or a folder that another service syncs, open Settings and click Choose… next to Folder. Seashell moves its folder there and restarts. iCloud only syncs it in Documents or iCloud Drive; moving it out takes it off your other Macs, and Seashell warns you first.
+
 ## Settings
 
 Open Settings from the menu bar icon, with ⌘, in the panel, or by clicking the Seashell icon on the panel's edge.
@@ -90,13 +92,14 @@ Open Settings from the menu bar icon, with ⌘, in the panel, or by clicking the
 - Theme: System, Light or Dark
 - Text size, also ⌘+ / ⌘− / ⌘0 in the panel
 - Open Seashell when you log in
+- Folder: where your shelves and notes live, Documents unless you choose another
 - Ask before stashing: over 500 MB, 1 GB, 5 GB, or never
 - Shake sensitivity: Off, Gentle, Normal or Firm
 - Apps where shakes are ignored, such as drawing apps and games
 - Keyboard shortcut
 - Pull down at the top edge to open the panel
 
-The menu bar icon's menu also lists your shelves, with how many items each holds, and how many notes you have. Choosing a shelf, or All Notes, opens the panel there, and Show in Finder opens `~/Documents/Seashell`. Tips… shows the welcome tips again. About Seashell shows the version and has a Check for Updates… button, which asks GitHub for the newest release and offers its download page if it's newer.
+The menu bar icon's menu also lists your shelves, with how many items each holds, and how many notes you have. Choosing a shelf, or All Notes, opens the panel there, and Show in Finder opens Seashell's folder. Tips… shows the welcome tips again. About Seashell shows the version and has a Check for Updates… button, which asks GitHub for the newest release and offers its download page if it's newer.
 
 ## Privacy and resources
 
@@ -148,7 +151,7 @@ scripts/release.sh
 2. Quit Seashell from its menu bar icon.
 3. Delete `/Applications/Seashell.app`.
 
-Your shelves and notes stay in `~/Documents/Seashell`. To clear Seashell's preferences as well:
+Your shelves and notes stay in Seashell's folder (`~/Documents/Seashell`, unless you chose another). To clear Seashell's preferences as well:
 
 ```bash
 defaults delete io.github.codexjdub.seashell

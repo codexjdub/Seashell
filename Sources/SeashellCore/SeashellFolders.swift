@@ -1,11 +1,22 @@
 import Foundation
 
 /// Where Seashell keeps things. Stash and Notes live in Documents so iCloud syncs
-/// them; anything that only makes sense on this Mac lives in Application Support.
+/// them, unless you choose another folder in Settings; anything that only makes
+/// sense on this Mac lives in Application Support.
 public struct SeashellFolders: Sendable {
     public static let defaultShelfName = "Main"
+    /// The name of Seashell's folder, in Documents or the folder you chose.
+    public static let folderName = "Seashell"
 
-    /// `~/Documents/Seashell`
+    /// `~/Documents`, where Seashell's folder is unless you choose another.
+    public static var defaultParent: URL { URL.documentsDirectory }
+
+    /// Seashell's folder inside `parent`.
+    public static func root(in parent: URL) -> URL {
+        parent.appending(path: folderName, directoryHint: .isDirectory)
+    }
+
+    /// `~/Documents/Seashell`, or Seashell in the folder you chose.
     public let root: URL
     /// `~/Library/Application Support/Seashell`
     public let support: URL
@@ -19,9 +30,13 @@ public struct SeashellFolders: Sendable {
         self.support = support
     }
 
-    public static var standard: SeashellFolders {
+    /// In Documents.
+    public static var standard: SeashellFolders { inside(defaultParent) }
+
+    /// Seashell's folder inside `parent`, and Application Support.
+    public static func inside(_ parent: URL) -> SeashellFolders {
         SeashellFolders(
-            root: URL.documentsDirectory.appending(path: "Seashell", directoryHint: .isDirectory),
+            root: root(in: parent),
             support: URL.applicationSupportDirectory.appending(path: "Seashell", directoryHint: .isDirectory)
         )
     }

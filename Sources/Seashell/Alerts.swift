@@ -6,10 +6,36 @@ import SeashellCore
 @MainActor
 enum Alerts {
     static func run(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        let window = alert.window
+        open.append(window)
+        defer { open.removeAll { $0 === window } }
         NSApp.activate()
-        alert.layout()
-        alert.window.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
+        raiseOnceShown(window)
         return alert.runModal()
+    }
+
+    /// Above the panel and the shelves.
+    private static let level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
+
+    /// Alerts showing now; one can open from another.
+    private static var open: [NSWindow] = []
+
+    /// Clicking a panel doesn't make Seashell the active app, so an alert
+    /// opened from one makes it active. That can finish after the alert was
+    /// raised, putting it back at the modal panel level, so it's raised again
+    /// (seen on macOS 27: the New shelf dialog at 8 when its click activated
+    /// Seashell, at 25 when Seashell was already active).
+    static func appBecameActive() {
+        open.forEach(raiseOnceShown)
+    }
+
+    /// `runModal` puts its window at the modal panel level (8), below the panel
+    /// (23), whatever level it had before; so it's raised once the modal session
+    /// runs. Checked on macOS 27: set before, it stays at 8; raised then, 25.
+    private static func raiseOnceShown(_ window: NSWindow) {
+        RunLoop.main.perform(inModes: [.modalPanel]) {
+            MainActor.assumeIsolated { window.level = level }
+        }
     }
 
     /// Asks for a confirmation; true if the first button was chosen.

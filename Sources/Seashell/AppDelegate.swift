@@ -30,11 +30,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         Log.info("Seashell \(version) launched from \(Bundle.main.bundlePath)")
 
-        let settings = AppSettings.shared
         observeChanges { NSApp.appearance = AppSettings.shared.theme.appearance }
 
-        let folders = SeashellFolders.standard
-        prepare(folders)
+        // Usually straight on; first, if need be, a move to a folder chosen in
+        // Settings, or asking about a folder that isn't there.
+        if let folders = FolderLocation.foldersIfSettled() {
+            launch(with: folders)
+        } else {
+            Task {
+                guard let folders = await FolderLocation.settle() else {
+                    NSApp.terminate(nil)
+                    return
+                }
+                launch(with: folders)
+            }
+        }
+    }
+
+    private func launch(with folders: SeashellFolders) {
+        let settings = AppSettings.shared
         let mover = FileMover()
         let store = StashStore(library: StashLibrary(stash: folders.stash, mover: mover))
         // Finder and iCloud touch hidden files often; log only real changes in what's stashed.
@@ -129,6 +143,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tipsWindow.showIfFirstLaunch()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        Alerts.appBecameActive()
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         guard !isSecondCopy else { return }
         panel?.saveNotes()
@@ -154,15 +172,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let running = others.first else { return false }
         Log.info("Seashell is already running (pid \(running.processIdentifier)); this copy quits")
         return true
-    }
-
-    private func prepare(_ folders: SeashellFolders) {
-        do {
-            for folder in try folders.createMissing() {
-                Log.info("Created \(folder.path(percentEncoded: false))")
-            }
-        } catch {
-            Log.error("Could not create Seashell folders: \(error.localizedDescription)")
-        }
     }
 }

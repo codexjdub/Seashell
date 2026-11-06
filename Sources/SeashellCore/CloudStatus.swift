@@ -25,4 +25,12 @@ public enum CloudStatus {
     public static func startDownloading(_ url: URL) throws {
         try FileManager.default.startDownloadingUbiquitousItem(at: url)
     }
+
+    /// What in `folder` isn't fully on this Mac: only in iCloud, or still
+    /// downloading. Moving the folder out of iCloud needs all of it here first.
+    public static func itemsNotDownloaded(in folder: URL) -> [URL] {
+        let keys: [URLResourceKey] = [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey, .ubiquitousItemIsDownloadingKey]
+        guard let enumerator = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: keys) else { return [] }
+        return enumerator.compactMap { $0 as? URL }.filter { [.cloudOnly, .downloading].contains(state(of: $0)) }
+    }
 }

@@ -332,8 +332,8 @@ final class StashDropper {
 
     private func confirmLarge(_ file: URL, size: Int64) -> Bool {
         Alerts.confirm("Stash “\(file.lastPathComponent)”?",
-                       detail: "It’s \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)). "
-                           + "Everything in Stash uploads to iCloud and counts against your iCloud storage.",
+                       detail: "It’s \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))."
+                           + (FolderLocation.isInICloud ? " Everything in Stash uploads to iCloud and counts against your iCloud storage." : ""),
                        confirm: "Stash")
     }
 
